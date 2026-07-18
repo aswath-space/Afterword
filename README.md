@@ -39,3 +39,7 @@ React 19 · TypeScript · Zustand (persisted to localStorage) · Vite + vite-plu
 ## Word list
 
 Validation uses the public-domain [ENABLE](https://everything2.com/title/ENABLE+word+list) list plus a curated modern supplement, minus a slur denylist (`src/dictionary/*.txt`). Edit those files and run `npm run gen-dict` to rebuild the dictionary asset.
+
+## License
+
+[MIT](LICENSE). Play it live at **[afterwordgame.netlify.app](https://afterwordgame.netlify.app)**.

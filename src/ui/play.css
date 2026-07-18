@@ -1,0 +1,66 @@
+@keyframes aw-shake {
+  10%, 90% { transform: translateX(-1px); }
+  20%, 80% { transform: translateX(2px); }
+  30%, 50%, 70% { transform: translateX(-4px); }
+  40%, 60% { transform: translateX(4px); }
+}
+.aw-shake { animation: aw-shake 0.4s both; }
+
+@keyframes aw-glow {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+.aw-glow { animation: aw-glow 1.8s ease-in-out infinite; }
+
+.aw-stuck::before {
+  content: "\21ba";      /* ↺ — signals a stuck / stay-put turn */
+  margin-right: 2px;
+  opacity: 0.75;
+}
+
+@keyframes aw-escape-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+.aw-escape-pulse { animation: aw-escape-pulse 1s ease-in-out infinite; transform-origin: center; }
+
+/* Valid-word feedback: the newest chain entry bounces in (green flash via colour). */
+@keyframes aw-pop {
+  0% { transform: translateY(4px) scale(0.9); opacity: 0; }
+  60% { transform: translateY(-2px) scale(1.06); }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+.aw-pop { animation: aw-pop 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* Winner confetti shard fall (component returns null under reduced motion).
+   Per-shard variance comes from CSS vars set inline by Confetti.tsx:
+   --aw-tilt (base rotation) and --aw-sway (horizontal drift amplitude),
+   so each shard swings side to side deterministically as it falls. */
+@keyframes aw-confetti {
+  0% {
+    transform: translate3d(0, -2vh, 0) rotate(var(--aw-tilt, 0deg));
+    opacity: 0;
+  }
+  8% { opacity: 0.9; }
+  30% {
+    transform: translate3d(var(--aw-sway, 0px), 32vh, 0) rotate(calc(var(--aw-tilt, 0deg) + 200deg));
+  }
+  62% {
+    transform: translate3d(calc(var(--aw-sway, 0px) * -0.7), 66vh, 0) rotate(calc(var(--aw-tilt, 0deg) + 380deg));
+    opacity: 0.85;
+  }
+  100% {
+    transform: translate3d(calc(var(--aw-sway, 0px) * 0.4), 115vh, 0) rotate(calc(var(--aw-tilt, 0deg) + 560deg));
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aw-shake, .aw-glow, .aw-escape-pulse, .aw-pop { animation: none; }
+}
+
+/* Phase 5 — cross-fade between setup/play/won via the View Transitions API. */
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 220ms;
+    animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}

@@ -1,0 +1,70 @@
+/* Phase 6B — display & accessibility modes. Pure token OVERRIDES driven by data-*
+   attributes stamped by displayStore. src/theme/inkwell.css is LOCKED and untouched;
+   this file must load after it. Structure mirrors inkwell.css: media block covers the
+   pre-data-theme first paint, attribute blocks take over once useTheme stamps. */
+
+/* ---- High contrast: stronger ink & lines ---- */
+:root[data-contrast="high"] {
+  --ink: #140E08;
+  --ink-soft: #463823;
+  --line: #8F7A50;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-contrast="high"] {
+    --ink: #FFF6E0;
+    --ink-soft: #D9C69E;
+    --line: #7E6A45;
+  }
+}
+:root[data-contrast="high"][data-theme="light"] {
+  --ink: #140E08;
+  --ink-soft: #463823;
+  --line: #8F7A50;
+}
+:root[data-contrast="high"][data-theme="dark"] {
+  --ink: #FFF6E0;
+  --ink-soft: #D9C69E;
+  --line: #7E6A45;
+}
+
+/* ---- Colour-blind-safe player palette (Okabe-Ito derived, Inkwell-tuned) ---- */
+:root[data-palette="cvd"] {
+  --p1: #C25E00; /* vermilion-orange */
+  --p2: #0072B2; /* blue */
+  --p3: #007A5E; /* bluish green */
+  --p4: #B0568A; /* reddish purple */
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-palette="cvd"] {
+    --p1: #E87D33;
+    --p2: #4BA3DC;
+    --p3: #2FB68F;
+    --p4: #D290B4;
+  }
+}
+:root[data-palette="cvd"][data-theme="light"] {
+  --p1: #C25E00;
+  --p2: #0072B2;
+  --p3: #007A5E;
+  --p4: #B0568A;
+}
+:root[data-palette="cvd"][data-theme="dark"] {
+  --p1: #E87D33;
+  --p2: #4BA3DC;
+  --p3: #2FB68F;
+  --p4: #D290B4;
+}
+
+/* ---- Larger text: defines the --fs-* vars components fall back from ---- */
+:root[data-text="large"] {
+  --fs-hud-name: 19px; /* keeps the player name above the 17px detail line (hierarchy) */
+  --fs-chain-word: 22px;
+  --fs-chain-sup: 13px;
+  --fs-chain-empty: 15px;
+  --fs-hud-detail: 17px;
+  --fs-hud-letter: 22px;
+  --fs-input: 26px;
+  --fs-input-msg: 15px;
+  --fs-secondary: 15px;
+  --fs-body: 16px;
+}

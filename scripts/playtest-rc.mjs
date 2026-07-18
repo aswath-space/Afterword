@@ -7,6 +7,8 @@
 // Usage, FROM THE PROJECT ROOT (paths + node_modules resolve from there):
 //   npm run build && npm run preview   (in one terminal)
 //   node scripts/playtest-rc.mjs       (in another; screenshots → ./pt-shots-rc)
+// Or against any deployed origin:
+//   node scripts/playtest-rc.mjs https://afterwordgame.netlify.app
 // Exit 0 = every check passed with zero console errors; ALWAYS look at the screenshots.
 import { chromium } from 'playwright'
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs'
@@ -14,7 +16,7 @@ import { gunzipSync } from 'node:zlib'
 
 const SHOTS = 'pt-shots-rc'
 mkdirSync(SHOTS, { recursive: true })
-const BASE = 'http://localhost:4173'
+const BASE = (process.argv[2] ?? 'http://localhost:4173').replace(/\/$/, '')
 
 const words = gunzipSync(readFileSync('public/dict.bin')).toString('utf8').split('\n').filter(Boolean)
 const byKey = new Map()

@@ -6,6 +6,7 @@ import { AnimatedTokenLayer } from '../AnimatedTokenLayer'
 import { TurnHud } from '../TurnHud'
 import { WordInput } from '../WordInput'
 import { ChainStrip } from '../ChainStrip'
+import { StandingsStrip } from '../StandingsStrip'
 import { HandoffCurtain } from '../HandoffCurtain'
 import { AimLayer } from '../AimLayer'
 import { EscapeVignette } from '../EscapeVignette'
@@ -41,6 +42,7 @@ export function PlayScreen({ holdClock = false }: { holdClock?: boolean }) {
   const undoState = useGameStore((s) => s.undoState)
   const undosUsed = useGameStore((s) => s.undosUsed)
   const lastEvents = useGameStore((s) => s.lastEvents)
+  const moveSeq = useGameStore((s) => s.moveSeq)
   const [stuckMode, setStuckMode] = useState(false)
   const [draft, setDraft] = useState('')
   const [inputFocused, setInputFocused] = useState(false)
@@ -144,6 +146,7 @@ export function PlayScreen({ holdClock = false }: { holdClock?: boolean }) {
         stuckMode={stuckMode}
         escapeTotalMs={RESCUE_MS}
       />
+      <StandingsStrip players={game.players} lastEvents={lastEvents} moveSeq={moveSeq} />
       <div
         onClick={() => { if (presenting) skip() }}
         style={{ position: 'relative', border: '1px solid var(--line)', borderRadius: 14, padding: 14, background: 'linear-gradient(180deg, var(--paper-2), transparent)' }}

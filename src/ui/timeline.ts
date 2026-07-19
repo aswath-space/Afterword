@@ -4,6 +4,7 @@ export type Beat =
   | { kind: 'hops'; playerId: string; squares: number[] }
   | { kind: 'climb'; playerId: string; from: number; to: number }
   | { kind: 'slither'; playerId: string; head: number; tail: number }
+  | { kind: 'knockback'; playerId: string; from: number; to: number }
   | { kind: 'settle'; playerId: string; square: number }
 
 // Pure: turn the engine's ordered event list into ordered animation beats.
@@ -28,6 +29,10 @@ export function buildTimeline(events: GameEvent[]): Beat[] {
       case 'ESCAPE_FAIL':
         beats.push({ kind: 'slither', playerId: e.playerId, head: e.head, tail: e.tail })
         lastSquare[e.playerId] = e.tail
+        break
+      case 'CAPTURE':
+        beats.push({ kind: 'knockback', playerId: e.playerId, from: e.from, to: e.to })
+        lastSquare[e.playerId] = e.to
         break
       case 'ESCAPE_SUCCESS':
         beats.push({ kind: 'settle', playerId: e.playerId, square: e.head })

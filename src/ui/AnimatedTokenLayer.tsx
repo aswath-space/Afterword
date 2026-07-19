@@ -13,19 +13,26 @@ const CLIP: Record<string, string> = {
 }
 const BASE = 'translate(-50%, -50%)' // token is centered on its square
 
-// F8 fix: when 2+ tokens REST on the same square they fan out around its centre on a
-// tiny deterministic pattern instead of stacking concentrically. Slots are assigned by
-// players-array order among the co-located set. Components stay ≤1.4% of the board
-// dimension, which keeps every token inside its tile on all board sizes (worst case is
-// the 100 board: 3.5% half-token + 1.4% offset < 5% half-cell). Beat keyframes are
-// untouched — the moving token animates centre-to-centre and takes its slot on settle.
+// When 2+ tokens REST on the same square they fan out around its centre AND shrink,
+// so they read as separate chips instead of a 70%-overlapping pile (the old ~1.3%
+// offset was far smaller than a token's 3.5% radius). Slots are assigned by
+// players-array order among the co-located set. The invariant: every token stays
+// inside its tile on ALL board sizes — worst case is the 100 board (5% half-cell),
+// where max single-axis offset (~2.5%) + the shrunk half-token keeps the far edge
+// < 5%. A lone token is byte-identical to before (7%, exact centre). Beat keyframes
+// are untouched — the moving token animates centre-to-centre and takes its slot +
+// size on settle. Co-located rest is now rare in play (capture prevents voluntary
+// stacking); the common cases are the start clump and the odd knockback collision.
 const FAN: ReadonlyArray<ReadonlyArray<readonly [number, number]>> = [
   [], // 0 co-located — unused
   [[0, 0]], // alone — exact centre (the common case is byte-identical to before)
-  [[-1.1, -1.1], [1.1, 1.1]], // pair — diagonal
-  [[0, -1.4], [-1.3, 1.0], [1.3, 1.0]], // trio — triangle
-  [[0, -1.4], [1.4, 0], [0, 1.4], [-1.4, 0]], // four — cross
+  [[-1.9, -1.9], [1.9, 1.9]], // pair — diagonal
+  [[0, -2.5], [-2.4, 1.5], [2.4, 1.5]], // trio — triangle
+  [[0, -2.4], [2.4, 0], [0, 2.4], [-2.4, 0]], // four — cross
 ]
+// Token diameter as a % of board width, indexed by min(cohort size, 4). Smaller
+// cohorts keep bigger tokens; larger cohorts shrink so the fan separates them.
+const TOKEN_PCT = ['7%', '7%', '5.2%', '4.6%', '4%'] as const
 
 // Token layer that plays ONE beat at a time via the Web Animations API in
 // percentage space (auto-aligned with BoardView/StampLayer). WAAPI reliably
@@ -53,16 +60,19 @@ export function AnimatedTokenLayer({ players, length, beat, onBeatDone, onHopLan
     const c = posXY(square)
     return { left: `${c.x}%`, top: `${c.y}%` }
   }
-  // Resting position: square centre plus this token's FAN slot when co-located.
   // Cohorts group by the VISUAL square (square 0 rests on square 1), so starting
   // tokens fan out together with any token already sitting on square 1.
+  const visualSquare = (pl: PlayerState) => Math.max(pl.square, 1)
+  const cohortOf = (p: PlayerState) => players.filter((pl) => visualSquare(pl) === visualSquare(p))
+  // Resting position: square centre plus this token's FAN slot when co-located.
   const restPos = (p: PlayerState) => {
-    const visual = (pl: PlayerState) => Math.max(pl.square, 1)
-    const cohort = players.filter((pl) => visual(pl) === visual(p))
+    const cohort = cohortOf(p)
     const [dx, dy] = FAN[Math.min(cohort.length, 4)]?.[cohort.findIndex((pl) => pl.id === p.id)] ?? [0, 0]
     const c = posXY(p.square)
     return { left: `${c.x + dx}%`, top: `${c.y + dy}%` }
   }
+  // Token diameter shrinks when the square is shared (see FAN/TOKEN_PCT).
+  const tokenSize = (p: PlayerState) => TOKEN_PCT[Math.min(cohortOf(p).length, 4)]
   const ptPos = (p: { x: number; y: number }) => ({ left: `${(p.x / layout.width) * 100}%`, top: `${(p.y / layout.height) * 100}%` })
   const reduced = prefersReducedMotion()
 
@@ -107,6 +117,18 @@ export function AnimatedTokenLayer({ players, length, beat, onBeatDone, onHopLan
         settle(ptPos(pts[0]))
         await play(pts.map((p) => ({ ...ptPos(p) })), 950, 'cubic-bezier(0.5,0,0.75,0)')
         if (!cancelled) settle(ptPos(pts[pts.length - 1]))
+      } else if (beat.kind === 'knockback') {
+        // The bumped victim is shoved straight back to its knocked-down square. A
+        // recoil (quick nudge toward the mover, then an accelerating slide back)
+        // sells the hit; it settles on the victim's committed (fanned) rest slot.
+        const a = pos(beat.from), c = pos(beat.to)
+        settle(a)
+        await play([
+          { left: a.left, top: a.top, transform: `${BASE} scale(1)` },
+          { transform: `${BASE} scale(1.12)`, offset: 0.14 },
+          { left: c.left, top: c.top, transform: `${BASE} scale(1)` },
+        ], 500, 'cubic-bezier(0.5, 0, 0.75, 0)')
+        if (!cancelled) settle(c)
       } else if (beat.kind === 'settle') {
         await play([
           { transform: `${BASE} scale(1)` },
@@ -154,8 +176,8 @@ export function AnimatedTokenLayer({ players, length, beat, onBeatDone, onHopLan
               // commits this style removal in the mutation phase, before the layout
               // effect snaps the mover to its beat-start square — so the mover is
               // always transition-free while animating.
-              transition: animating || reduced ? undefined : 'left 150ms ease, top 150ms ease',
-              width: '7%', aspectRatio: '1', background: p.color, clipPath: CLIP[p.emblem] ?? CLIP.circle,
+              transition: animating || reduced ? undefined : 'left 150ms ease, top 150ms ease, width 150ms ease',
+              width: tokenSize(p), aspectRatio: '1', background: p.color, clipPath: CLIP[p.emblem] ?? CLIP.circle,
               boxShadow: '0 2px 5px rgba(0,0,0,0.35)', border: '1.5px solid rgba(255,255,255,0.6)',
             }}
           />

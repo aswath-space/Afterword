@@ -22,6 +22,17 @@ describe('buildTimeline', () => {
     const ev: GameEvent[] = [{ type: 'ESCAPE_FAIL', playerId: 'p1', head: 20, tail: 8 }, { type: 'TURN', playerId: 'p2' }]
     expect(buildTimeline(ev)).toEqual([{ kind: 'slither', playerId: 'p1', head: 20, tail: 8 }])
   })
+  it('maps a CAPTURE to a knockback beat, ordered after the mover hop', () => {
+    const ev: GameEvent[] = [
+      { type: 'MOVE', playerId: 'p1', from: 10, to: 14, squares: 4 },
+      { type: 'CAPTURE', playerId: 'p2', from: 14, to: 10, byPlayerId: 'p1' },
+      { type: 'TURN', playerId: 'p2' },
+    ]
+    expect(buildTimeline(ev)).toEqual([
+      { kind: 'hops', playerId: 'p1', squares: [11, 12, 13, 14] },
+      { kind: 'knockback', playerId: 'p2', from: 14, to: 10 },
+    ])
+  })
   it('maps escape success and win to a settle, and stuck/turn to nothing', () => {
     expect(buildTimeline([{ type: 'ESCAPE_SUCCESS', playerId: 'p1', head: 20 }])).toEqual([{ kind: 'settle', playerId: 'p1', square: 20 }])
     expect(buildTimeline([{ type: 'MOVE', playerId: 'p1', from: 26, to: 30, squares: 4 }, { type: 'WIN', playerId: 'p1' }])).toEqual([

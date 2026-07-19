@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Header } from '../Header'
 import { EmblemChip } from '../EmblemChip'
+import { CAPTURE_KNOCKBACK } from '../../engine/helpers'
 import type { GameConfig, TurnTimer } from '../../engine/types'
 import type { SharedBoard } from '../../share/boardCodec'
 
@@ -53,6 +54,7 @@ export function SetupScreen({ onStart, sharedBoard = null, onClearShared }: {
   const [names, setNames] = useState<string[]>(['Player 1', 'Player 2'])
   const [boardLength, setBoardLength] = useState<30 | 50 | 100>(50)
   const [timer, setTimer] = useState<TurnTimer>('off')
+  const [bumps, setBumps] = useState(true)
   const effectiveLength = sharedBoard?.length ?? boardLength
 
   const setName = (i: number, v: string) => setNames(names.map((n, j) => (j === i ? v : n)))
@@ -69,6 +71,7 @@ export function SetupScreen({ onStart, sharedBoard = null, onClearShared }: {
       })),
       boardLength: effectiveLength,
       timer,
+      capture: bumps,
       seed: sharedBoard?.seed ?? Math.random().toString(36).slice(2, 10),
     })
   }
@@ -144,6 +147,19 @@ export function SetupScreen({ onStart, sharedBoard = null, onClearShared }: {
         <div>
           <h2 style={label}>Turn timer</h2>
           <Segmented options={TIMERS} value={timer} onChange={setTimer} label="Turn timer" />
+        </div>
+
+        <div>
+          <h2 style={label}>Bumps</h2>
+          <Segmented
+            options={[{ v: 'on', label: 'On' }, { v: 'off', label: 'Off' }]}
+            value={bumps ? 'on' : 'off'}
+            onChange={(v) => setBumps(v === 'on')}
+            label="Bumps"
+          />
+          <p style={{ margin: '8px 0 0', fontSize: 'var(--fs-secondary, 13px)', lineHeight: 1.5, color: 'var(--ink-soft)' }}>
+            Land <b style={{ color: 'var(--ink)' }}>exactly</b> on an opponent to knock them back {CAPTURE_KNOCKBACK} squares.
+          </p>
         </div>
 
         <button

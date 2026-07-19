@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, fireEvent, cleanup } from '@testing-library/react'
+import { render, fireEvent, cleanup, within } from '@testing-library/react'
 import { SetupScreen } from './SetupScreen'
 
 // This repo's vitest config has no `test.globals: true` / setupFiles, so
@@ -31,8 +31,18 @@ describe('SetupScreen', () => {
     expect(config.players[0]).toMatchObject({ id: 'p1', color: 'var(--p1)', emblem: 'circle' })
     expect(config.boardLength).toBe(50)
     expect(config.timer).toBe('off')
+    expect(config.capture).toBe(true) // Bumps default on
     expect(typeof config.seed).toBe('string')
     expect(config.seed.length).toBeGreaterThan(0)
+  })
+
+  it('turning Bumps off sets capture: false in the config', () => {
+    const onStart = vi.fn()
+    const { getByText, getByRole } = render(<SetupScreen onStart={onStart} />)
+    const bumps = getByRole('radiogroup', { name: 'Bumps' })
+    fireEvent.click(within(bumps).getByText('Off'))
+    fireEvent.click(getByText('Start game'))
+    expect(onStart.mock.calls[0][0].capture).toBe(false)
   })
 
   it('locks the board to a shared link and starts with its exact seed + length', () => {

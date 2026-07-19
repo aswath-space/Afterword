@@ -8,6 +8,12 @@ export const MIN_WORD_LENGTH = 3
 // playable under the 20s clock; a drop beyond the cap still slides the full distance on failure.
 export const RESCUE_NEED_CAP = 8
 
+// How far a captured player is knocked back when an opponent lands exactly on
+// their square (a "bump"). Fixed count; validated by scripts/sim-capture.ts (see
+// docs/superpowers/plans/2026-07-19-capture-and-standings.md, Task 4). The
+// knockback is a PURE slide: never re-triggers snakes/ladders, clamped to >= 1.
+export const CAPTURE_KNOCKBACK = 5
+
 export function normalize(word: string): string {
   return word.trim().toUpperCase()
 }

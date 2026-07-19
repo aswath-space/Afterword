@@ -110,9 +110,12 @@ export function PlayScreen({ holdClock = false }: { holdClock?: boolean }) {
         ),
       )
     : stamps
-  // Attribute the moving token to the acting player during its animation (not the
-  // committed next player) so the HUD reads honestly.
-  const hudPlayer = presenting && beat ? (game.players.find((p) => p.id === beat.playerId) ?? player) : player
+  // Attribute the HUD to the player who ACTED this turn (the mover / escaper) during
+  // the animation — NOT the beat's own token: a bump's knockback beat belongs to the
+  // VICTIM, and the HUD must never read as the victim's turn. The first non-TURN event
+  // is always the actor (MOVE for a move, ESCAPE_* for an escape).
+  const actingId = lastEvents.find((e) => e.type !== 'TURN')?.playerId
+  const hudPlayer = presenting && actingId ? (game.players.find((p) => p.id === actingId) ?? player) : player
 
   const onSubmit = (w: string): boolean => {
     if (escape) return gameStore.getState().resolveEscape(w)

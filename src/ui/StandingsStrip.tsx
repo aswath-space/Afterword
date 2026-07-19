@@ -58,8 +58,11 @@ export function StandingsStrip({ players, lastEvents, moveSeq }: {
     <div
       data-standings
       style={{
-        position: 'relative', display: 'flex', alignItems: 'center', gap: 10,
-        marginBottom: 12, overflowX: 'auto', scrollbarWidth: 'none', minHeight: 26,
+        position: 'relative', display: 'flex', alignItems: 'center', gap: 8,
+        marginBottom: 12, minHeight: 26,
+        // Wrap to a second row rather than clip a player behind a scroll — at 4
+        // players on a narrow phone all ranks must stay visible.
+        flexWrap: 'wrap', rowGap: 6,
       }}
     >
       {/* SR summary of the standings; announced (politely) when the leader changes. */}

@@ -29,6 +29,44 @@ describe('ChainStrip', () => {
     const { container } = render(<ChainStrip entries={entries} players={players} />)
     expect((container.querySelector('[data-chain-entry]') as HTMLElement).textContent).toContain('+0')
     expect(container.querySelector('.aw-stuck')).toBeTruthy()
+    expect(container.querySelector('[data-chain-feature]')).toBeNull() // stuck marker gains no glyph
+  })
+
+  it('a ladder entry keeps its +N and gains a brass ▲ glyph', () => {
+    const entries: ChainEntry[] = [
+      { word: 'HABANERA', playerId: 'p1', squares: 8, kind: 'move', feature: 'ladder', to: 29 },
+    ]
+    const { container } = render(<ChainStrip entries={entries} players={players} />)
+    expect((container.querySelector('[data-chain-entry]') as HTMLElement).textContent).toContain('+8')
+    const glyph = container.querySelector('[data-chain-feature="ladder"]') as HTMLElement
+    expect(glyph.textContent).toBe('▲')
+    expect(glyph.style.color).toBe('var(--brass)')
+  })
+
+  it('a snake-slid entry renders a plum ▼ glyph', () => {
+    const entries: ChainEntry[] = [
+      { word: 'EGG', playerId: 'p2', squares: 3, kind: 'move', feature: 'snake-slid', to: 24 },
+    ]
+    const { container } = render(<ChainStrip entries={entries} players={players} />)
+    const glyph = container.querySelector('[data-chain-feature="snake-slid"]') as HTMLElement
+    expect(glyph.textContent).toBe('▼')
+    expect(glyph.style.color).toBe('var(--plum)')
+  })
+
+  it('a snake-escaped entry renders an ink-soft ▼ glyph (met the snake, survived)', () => {
+    const entries: ChainEntry[] = [
+      { word: 'EGG', playerId: 'p2', squares: 3, kind: 'move', feature: 'snake-escaped', to: 32 },
+    ]
+    const { container } = render(<ChainStrip entries={entries} players={players} />)
+    const glyph = container.querySelector('[data-chain-feature="snake-escaped"]') as HTMLElement
+    expect(glyph.textContent).toBe('▼')
+    expect(glyph.style.color).toBe('var(--ink-soft)')
+  })
+
+  it('a plain entry renders no feature glyph', () => {
+    const entries: ChainEntry[] = [{ word: 'CARD', playerId: 'p1', squares: 4, kind: 'move' }]
+    const { container } = render(<ChainStrip entries={entries} players={players} />)
+    expect(container.querySelector('[data-chain-feature]')).toBeNull()
   })
 
   it('bounces only the newest entry', () => {

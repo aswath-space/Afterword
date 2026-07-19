@@ -12,7 +12,7 @@ function label(l: Landing): string {
   }
 }
 
-export function AimLayer({ board, from, draftLength, reach = 12, showReach = true }: { board: Board; from: number; draftLength: number; reach?: number; showReach?: boolean }) {
+export function AimLayer({ board, from, draftLength, reach = 12, showReach = true, draftValid = true, requiredLetter = null }: { board: Board; from: number; draftLength: number; reach?: number; showReach?: boolean; draftValid?: boolean; requiredLetter?: string | null }) {
   const layout = boardLayout(board.length)
   const wPct = 100 / layout.cols
   const hPct = 100 / layout.rows
@@ -38,7 +38,18 @@ export function AimLayer({ board, from, draftLength, reach = 12, showReach = tru
               border: `2px dashed ${hue}`,
               boxShadow: `0 0 0 2px color-mix(in srgb, ${hue} 22%, transparent)`,
             }}
-          />
+          >
+            <span
+              aria-hidden="true"
+              style={{
+                position: 'absolute', bottom: 1, right: 3,
+                fontFamily: 'var(--font-sans)', fontSize: 10, lineHeight: 1,
+                color: hue, pointerEvents: 'none',
+              }}
+            >
+              {f.kind === 'ladder' ? '▲' : '▼'}
+            </span>
+          </div>
         )
       })}
 
@@ -47,15 +58,21 @@ export function AimLayer({ board, from, draftLength, reach = 12, showReach = tru
           data-landing={landing.square}
           style={{ position: 'absolute', ...pos(landing.square), transform: 'translate(-50%, -50%)', width: `${wPct}%`, height: `${hPct}%`, display: 'grid', placeItems: 'center' }}
         >
-          <div style={{ width: '68%', height: '68%', borderRadius: '50%', border: '3px solid var(--ink)', boxShadow: '0 0 0 3px color-mix(in srgb, var(--ink) 20%, transparent)' }} />
+          <div
+            style={{
+              width: '68%', height: '68%', borderRadius: '50%',
+              border: draftValid ? '3px solid var(--ink)' : '3px dashed var(--ink-soft)',
+              boxShadow: draftValid ? '0 0 0 3px color-mix(in srgb, var(--ink) 20%, transparent)' : 'none',
+            }}
+          />
           <span
             style={{
               position: 'absolute', top: '100%', marginTop: 3, whiteSpace: 'nowrap',
               fontFamily: 'var(--font-sans)', fontSize: 11, fontWeight: 700, padding: '2px 6px', borderRadius: 6,
-              background: 'var(--ink)', color: 'var(--paper)',
+              background: draftValid ? 'var(--ink)' : 'var(--ink-soft)', color: 'var(--paper)',
             }}
           >
-            {label(landing)}
+            {draftValid || !requiredLetter ? label(landing) : `needs ${requiredLetter}`}
           </span>
         </div>
       )}

@@ -10,6 +10,9 @@ import { HandoffCurtain } from '../HandoffCurtain'
 import { AimLayer } from '../AimLayer'
 import { EscapeVignette } from '../EscapeVignette'
 import { EscapeRing } from '../EscapeRing'
+import { ContextStrip } from '../ContextStrip'
+import { previewLanding } from '../aiming'
+import { rejectMessage } from '../WordInput'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { useWakeLock } from '../useWakeLock'
 import { withScreenTransition } from '../viewTransition'
@@ -37,6 +40,7 @@ export function PlayScreen({ holdClock = false }: { holdClock?: boolean }) {
   const dictReady = useGameStore((s) => s.dictReady)
   const undoState = useGameStore((s) => s.undoState)
   const undosUsed = useGameStore((s) => s.undosUsed)
+  const lastEvents = useGameStore((s) => s.lastEvents)
   const [stuckMode, setStuckMode] = useState(false)
   const [draft, setDraft] = useState('')
   const [inputFocused, setInputFocused] = useState(false)
@@ -114,6 +118,14 @@ export function PlayScreen({ holdClock = false }: { holdClock?: boolean }) {
     return gameStore.getState().submit(w)
   }
 
+  // Context strip inputs: the live landing for the current draft, whether the draft
+  // obeys the first-letter rule, and the rejection text (surfaced in-strip because
+  // the below-input message can render under the fold).
+  const draftLen = draft.trim().length
+  const stripLanding = !escape && !stuckMode && !won && draftLen >= 1 ? previewLanding(game.board, player.square, draftLen) : null
+  const draftValid = !game.requiredLetter || draftLen === 0 || draft.trim()[0].toUpperCase() === game.requiredLetter
+  const feedbackText = feedback ? rejectMessage(feedback.reason, { requiredLetter: escape || stuckMode ? null : game.requiredLetter, minLength }) : null
+
   return (
     <div>
       <Header compact onNewGame={() => setConfirmNewGame(true)} />
@@ -133,19 +145,51 @@ export function PlayScreen({ holdClock = false }: { holdClock?: boolean }) {
         style={{ position: 'relative', border: '1px solid var(--line)', borderRadius: 14, padding: 14, background: 'linear-gradient(180deg, var(--paper-2), transparent)' }}
       >
         <BoardView board={game.board} />
-        <StampLayer stamps={shownStamps} length={game.board.length} players={game.players} />
+        <StampLayer stamps={shownStamps} length={game.board.length} players={game.players} board={game.board} />
         <AnimatedTokenLayer players={game.players} length={game.board.length} beat={beat} onBeatDone={onBeatDone} onHopLand={revealSquare} />
         {escape && !presenting && deadlineTs != null && (
           <EscapeVignette fraction={remainingMs / RESCUE_MS} />
         )}
         {!handoff && !escape && !stuckMode && !presenting && !won && (
-          <AimLayer board={game.board} from={player.square} draftLength={draft.trim().length} showReach={showReach} />
+          <AimLayer
+            board={game.board}
+            from={player.square}
+            draftLength={draft.trim().length}
+            showReach={showReach}
+            draftValid={draftValid}
+            requiredLetter={game.requiredLetter}
+          />
         )}
         {handoff && !presenting && (
           <HandoffCurtain
             player={player}
             onStart={() => gameStore.getState().beginTurn()}
-            takeBack={undoState ? { word: undoState.word, free: undosUsed === 0, onTakeBack: () => gameStore.getState().undo() } : undefined}
+            firstTurn={chainLog.length === 0}
+            requiredLetter={game.requiredLetter}
+            // The last-move story for the incoming player, from the transient event
+            // log (absent after a reload — the recap simply doesn't render then).
+            recap={(() => {
+              const entry = chainLog[chainLog.length - 1]
+              if (!entry || lastEvents.some((e) => e.type === 'STUCK')) return null
+              const mover = game.players.find((p) => p.id === entry.playerId)
+              if (!mover) return null
+              const base = { word: entry.word, playerName: mover.name, playerColor: mover.color }
+              const ladder = lastEvents.find((e) => e.type === 'LADDER')
+              if (ladder && ladder.type === 'LADDER') return { ...base, from: ladder.foot, to: ladder.top, feature: 'ladder' as const }
+              const fail = lastEvents.find((e) => e.type === 'ESCAPE_FAIL')
+              if (fail && fail.type === 'ESCAPE_FAIL') return { ...base, from: fail.head, to: fail.tail, feature: 'snake-slid' as const }
+              const rescued = lastEvents.find((e) => e.type === 'ESCAPE_SUCCESS')
+              if (rescued && rescued.type === 'ESCAPE_SUCCESS') return { ...base, from: rescued.head, to: rescued.head, feature: 'snake-escaped' as const }
+              const move = lastEvents.find((e) => e.type === 'MOVE')
+              if (move && move.type === 'MOVE') return { ...base, from: move.from, to: move.to }
+              return null
+            })()}
+            takeBack={undoState ? {
+              word: undoState.word,
+              free: undosUsed === 0,
+              onTakeBack: () => gameStore.getState().undo(),
+              playerName: game.players.find((p) => p.id === undoState.playerId)?.name,
+            } : undefined}
           />
         )}
       </div>
@@ -154,6 +198,15 @@ export function PlayScreen({ holdClock = false }: { holdClock?: boolean }) {
 
       {!handoff && !presenting && !won && (
         <>
+          <ContextStrip
+            player={player}
+            requiredLetter={stuckMode ? null : game.requiredLetter}
+            landing={stripLanding}
+            draftValid={draftValid}
+            feedbackText={feedbackText}
+            mode={escape ? 'escape' : stuckMode ? 'stuck' : 'chain'}
+            need={need}
+          />
           <WordInput
             key={escape ? 'escape' : 'chain'}
             mode={escape ? 'escape' : 'chain'}
@@ -173,11 +226,14 @@ export function PlayScreen({ holdClock = false }: { holdClock?: boolean }) {
                 <EscapeRing remainingMs={remainingMs} totalMs={RESCUE_MS} size={40} />
               </span>
             ) : undefined}
+            hideMessage
           />
           <div style={{ display: 'flex', gap: 16, marginTop: 4, alignItems: 'center', flexWrap: 'wrap' }}>
             {escape ? (
               <>
-                <button onClick={() => gameStore.getState().resolveEscape(null)} style={secondaryBtn}>Give up &amp; slide</button>
+                <button onClick={() => gameStore.getState().resolveEscape(null)} style={secondaryBtn}>
+                  Give up &amp; slide to {game.pendingEscape?.toSquare}
+                </button>
                 {undoState && (
                   <button onClick={() => gameStore.getState().undo()} style={secondaryBtn}>
                     ↩ Take back {undoState.word} {undosUsed === 0 ? '(free)' : `(−${UNDO_PENALTY} squares)`}

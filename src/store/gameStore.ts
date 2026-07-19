@@ -11,7 +11,19 @@ export const RESCUE_MS = 20_000
 // and never triggers snakes/ladders (those fire only on word landings).
 export const UNDO_PENALTY = 3
 
-export type ChainEntry = { word: string; playerId: string; squares: number; kind: 'move' | 'stuck' }
+// `feature`/`to` record what the board did to the word AFTER the raw move:
+// a ladder climb, or a snake outcome (escaped = clung to the head, slid = fell
+// to the tail). `to` is the square the player ultimately ended on for that word.
+// Both are OPTIONAL — old persisted saves lack them, so every reader must
+// tolerate absence (a plain landing simply has neither).
+export type ChainEntry = {
+  word: string
+  playerId: string
+  squares: number
+  kind: 'move' | 'stuck'
+  feature?: 'ladder' | 'snake-escaped' | 'snake-slid'
+  to?: number
+}
 export type Feedback = { kind: 'reject'; reason: RejectReason }
 // A letter imprinted onto a board square by the word that walked across it.
 export type Stamp = { letter: string; playerId: string }
@@ -129,6 +141,14 @@ export function createGameStore(deps: GameStoreDeps): StoreApi<GameStoreState> {
             squares: move && move.type === 'MOVE' ? move.squares : 0,
             kind: 'move',
           }
+          // Record what the board did to the landing, so the chain doesn't lie:
+          // a ladder climb resolves immediately (feature + final square); a snake
+          // landing only notes the head as `to` — the escape hasn't resolved yet,
+          // resolveEscape() patches the outcome onto this entry retroactively.
+          const ladder = res.events.find((e) => e.type === 'LADDER')
+          if (ladder && ladder.type === 'LADDER') { entry.feature = 'ladder'; entry.to = ladder.top }
+          const escapeStart = res.events.find((e) => e.type === 'ESCAPE_START')
+          if (escapeStart && escapeStart.type === 'ESCAPE_START') entry.to = escapeStart.head
           // Imprint the word's letters onto the squares it walked (first-stamp-sticks).
           // Purely a visual record derived from the MOVE event — never read back by the
           // engine, so it cannot affect turn/position logic or multiplayer correctness.
@@ -163,12 +183,26 @@ export function createGameStore(deps: GameStoreDeps): StoreApi<GameStoreState> {
         },
 
         resolveEscape: (raw) => {
-          const { game } = get()
+          const { game, chainLog } = get()
           if (!game) return false
           const res = engine.resolveSnakeEscape(game, raw)
           if (!res.ok) { set({ feedback: { kind: 'reject', reason: res.reason } }); return false }
+          // The escape resolves the LAST chain entry retroactively (the word that
+          // landed on the snake): success → 'snake-escaped' (`to` stays the head),
+          // fail/timeout → 'snake-slid' with `to` moved to the tail. Patched
+          // immutably; guarded so a foreign/absent last entry is never touched
+          // (e.g. a resumed old save whose chain predates these fields).
+          const outcome = res.events.find((e) => e.type === 'ESCAPE_SUCCESS' || e.type === 'ESCAPE_FAIL')
+          const last = chainLog[chainLog.length - 1]
+          let nextChainLog = chainLog
+          if (outcome && last && last.playerId === outcome.playerId) {
+            const patched: ChainEntry = outcome.type === 'ESCAPE_FAIL'
+              ? { ...last, feature: 'snake-slid', to: outcome.tail }
+              : { ...last, feature: 'snake-escaped' }
+            nextChainLog = [...chainLog.slice(0, -1), patched]
+          }
           // Resolving the escape (rescue, give-up or timeout) locks the word in.
-          set({ game: res.next, feedback: null, lastEvents: res.events, moveSeq: get().moveSeq + 1, undoState: null, ...transition(res.events) })
+          set({ game: res.next, chainLog: nextChainLog, feedback: null, lastEvents: res.events, moveSeq: get().moveSeq + 1, undoState: null, ...transition(res.events) })
           return true
         },
 

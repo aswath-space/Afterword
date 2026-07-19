@@ -382,6 +382,71 @@ describe('createGameStore', () => {
   })
 })
 
+describe('createGameStore — chain feature record (ladders & snakes)', () => {
+  const snakeGame = () => makeGame({ board: board({ snakes: [{ head: 4, tail: 1 }] }) })
+
+  it('a word landing on a ladder foot records feature ladder + the climbed-to square', () => {
+    const s = makeStore()
+    s.setState({ game: makeGame({ board: board({ ladders: [{ foot: 4, top: 10 }] }) }), chainLog: [] })
+    s.getState().submit('CARD')
+    expect(s.getState().chainLog[0]).toEqual({ word: 'CARD', playerId: 'p1', squares: 4, kind: 'move', feature: 'ladder', to: 10 })
+  })
+
+  it('a snake landing notes the head as `to` (no feature — unresolved); the slide patches it to snake-slid at the tail', () => {
+    const s = makeStore()
+    s.setState({ game: snakeGame(), chainLog: [] })
+    s.getState().submit('CARD') // lands on head 4 → awaiting-escape
+    expect(s.getState().chainLog[0]).toEqual({ word: 'CARD', playerId: 'p1', squares: 4, kind: 'move', to: 4 })
+    expect(s.getState().chainLog[0].feature).toBeUndefined()
+    s.getState().resolveEscape(null) // give up / timeout → slide
+    expect(s.getState().chainLog[0]).toEqual({ word: 'CARD', playerId: 'p1', squares: 4, kind: 'move', feature: 'snake-slid', to: 1 })
+  })
+
+  it('a successful rescue patches the landing word to snake-escaped, `to` still the head', () => {
+    const s = makeStore()
+    s.setState({ game: snakeGame(), chainLog: [] })
+    s.getState().submit('CARD')
+    s.getState().resolveEscape('DREAM') // 5 letters ≥ need → clings on
+    expect(s.getState().chainLog[0]).toEqual({ word: 'CARD', playerId: 'p1', squares: 4, kind: 'move', feature: 'snake-escaped', to: 4 })
+  })
+
+  it('a plain landing carries neither feature nor to', () => {
+    const s = makeStore()
+    s.setState({ game: makeGame(), chainLog: [] })
+    s.getState().submit('CARD')
+    expect('feature' in s.getState().chainLog[0]).toBe(false)
+    expect('to' in s.getState().chainLog[0]).toBe(false)
+  })
+
+  it("an escape never patches a last entry that isn't the escaping player's (old-save tolerance)", () => {
+    const s = makeStore()
+    s.setState({
+      game: makeGame({
+        phase: 'awaiting-escape',
+        pendingEscape: { playerId: 'p1', fromSquare: 4, drop: 3, toSquare: 1 },
+        players: [
+          { id: 'p1', name: 'Ana', color: 'var(--p1)', emblem: 'circle', square: 4 },
+          { id: 'p2', name: 'Ben', color: 'var(--p2)', emblem: 'diamond', square: 0 },
+        ],
+      }),
+      // A resumed save mid-escape whose chain tail is someone else's word.
+      chainLog: [{ word: 'MORE', playerId: 'p2', squares: 4, kind: 'move' }],
+    })
+    s.getState().resolveEscape(null)
+    expect(s.getState().game?.players[0].square).toBe(1) // slide still happens
+    expect(s.getState().chainLog[0]).toEqual({ word: 'MORE', playerId: 'p2', squares: 4, kind: 'move' }) // untouched
+  })
+
+  it('undo restores the snapshot chain unchanged after feature fields were written', () => {
+    const s = makeStore()
+    s.setState({ game: makeGame({ board: board({ ladders: [{ foot: 4, top: 10 }] }) }), chainLog: [], stamps: {} })
+    s.getState().submit('CARD')
+    expect(s.getState().chainLog[0].feature).toBe('ladder')
+    s.getState().undo()
+    expect(s.getState().chainLog).toEqual([])
+  })
+})
+
 describe('createGameStore — board stamps', () => {
   it('stamps the squares a word walks, in order, with the player id', () => {
     const s = makeStore()

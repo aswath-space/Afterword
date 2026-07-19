@@ -31,9 +31,13 @@ type Props = {
   // Rendered inside the input row (between field and button) — stays in view when
   // the browser scrolls the focused input on-screen (e.g. the escape countdown).
   trailing?: React.ReactNode
+  // When the caller renders the rejection visibly elsewhere (the ContextStrip),
+  // keep this component's message line for screen readers only — the below-input
+  // position can sit under the fold, which is how rejections went unseen.
+  hideMessage?: boolean
 }
 
-export function WordInput({ mode, requiredLetter, minLength, feedback, onSubmit, onClearFeedback, onValueChange, onFocusChange, accent, dictReady = true, trailing }: Props) {
+export function WordInput({ mode, requiredLetter, minLength, feedback, onSubmit, onClearFeedback, onValueChange, onFocusChange, accent, dictReady = true, trailing, hideMessage = false }: Props) {
   const [value, setValue] = useState('')
   const message = feedback ? rejectMessage(feedback.reason, { requiredLetter, minLength }) : ''
 
@@ -99,7 +103,16 @@ export function WordInput({ mode, requiredLetter, minLength, feedback, onSubmit,
           {mode === 'escape' ? 'Escape' : 'Go'}
         </button>
       </div>
-      <div aria-live="polite" style={{ minHeight: 18, fontSize: 'var(--fs-input-msg, 13px)', color: 'var(--terracotta)' }}>{message}</div>
+      <div
+        aria-live="polite"
+        style={
+          hideMessage
+            ? { position: 'absolute', width: 1, height: 1, overflow: 'hidden', clipPath: 'inset(50%)', whiteSpace: 'nowrap' }
+            : { minHeight: 18, fontSize: 'var(--fs-input-msg, 13px)', color: 'var(--terracotta)' }
+        }
+      >
+        {message}
+      </div>
     </form>
   )
 }

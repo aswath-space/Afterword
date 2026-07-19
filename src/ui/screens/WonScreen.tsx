@@ -80,7 +80,7 @@ export function WonScreen({ game, onPlayAgain, onNewGame }: { game: GameState; o
             <div style={{ fontFamily: 'var(--font-sans)', fontSize: 11, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'var(--ink-soft)' }}>
               The chain
             </div>
-            <ChainStrip entries={chainLog} players={game.players} />
+            <ChainStrip entries={chainLog} players={game.players} wrap />
           </div>
           <div
             data-stats

@@ -41,12 +41,12 @@ export function AnimatedTokenLayer({ players, length, beat, onBeatDone, onHopLan
   const refs = useRef<Record<string, HTMLDivElement | null>>({})
   const layout = boardLayout(length)
   const posXY = (square: number) => {
-    // A token still at "start" (square 0) sits just left of square 1 — its first move
-    // then enters cleanly from the start line, instead of off the board's far corner
-    // (centerOf(0) lands off-board and, unclipped, caused a stray dot + page overflow).
-    const base = layout.centerOf(square >= 1 ? square : 1)
-    const x = square >= 1 ? base.x : base.x - layout.unit
-    return { x: (x / layout.width) * 100, y: (base.y / layout.height) * 100 }
+    // Square 0 ("start") rests ON square 1: the old off-board rest point (one cell
+    // left of square 1) is clipped past the viewport edge on phone widths — all four
+    // UX lenses measured tokens at x≈-37px, i.e. a first turn with NO visible piece.
+    // Waiting tokens fan out inside square 1 with the sitting player instead.
+    const base = layout.centerOf(Math.max(square, 1))
+    return { x: (base.x / layout.width) * 100, y: (base.y / layout.height) * 100 }
   }
   // Exact square centre — used by every beat keyframe (moving tokens never fan out).
   const pos = (square: number) => {
@@ -54,8 +54,11 @@ export function AnimatedTokenLayer({ players, length, beat, onBeatDone, onHopLan
     return { left: `${c.x}%`, top: `${c.y}%` }
   }
   // Resting position: square centre plus this token's FAN slot when co-located.
+  // Cohorts group by the VISUAL square (square 0 rests on square 1), so starting
+  // tokens fan out together with any token already sitting on square 1.
   const restPos = (p: PlayerState) => {
-    const cohort = players.filter((pl) => pl.square === p.square)
+    const visual = (pl: PlayerState) => Math.max(pl.square, 1)
+    const cohort = players.filter((pl) => visual(pl) === visual(p))
     const [dx, dy] = FAN[Math.min(cohort.length, 4)]?.[cohort.findIndex((pl) => pl.id === p.id)] ?? [0, 0]
     const c = posXY(p.square)
     return { left: `${c.x + dx}%`, top: `${c.y + dy}%` }

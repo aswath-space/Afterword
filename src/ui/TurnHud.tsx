@@ -42,7 +42,11 @@ export function TurnHud({ player, phase, requiredLetter, need, remainingMs, show
           </div>
         ) : (
           <div style={{ fontSize: 'var(--fs-hud-detail, 14px)', color: 'var(--ink-soft)', marginTop: 4 }}>
-            start with <b className="aw-glow" style={{ fontFamily: 'var(--font-serif)', fontSize: 'var(--fs-hud-letter, 18px)', color: 'var(--teal)' }}>{requiredLetter ?? 'any'}</b>
+            {requiredLetter ? (
+              <>start with <b className="aw-glow" style={{ fontFamily: 'var(--font-serif)', fontSize: 'var(--fs-hud-letter, 18px)', color: 'var(--teal)' }}>{requiredLetter}</b></>
+            ) : (
+              <>play <b style={{ color: 'var(--teal)' }}>any word</b> — its last letter starts the chain</>
+            )}
           </div>
         ))}
       </div>

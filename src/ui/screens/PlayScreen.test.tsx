@@ -80,9 +80,11 @@ describe('PlayScreen', () => {
 
   it('renders the acting player in the HUD after a turn starts (Slice 2 integration non-regression)', () => {
     gameStore.getState().configureAndStart(CONFIG)
-    const { getByText } = render(<PlayScreen />)
+    const { getAllByText, getByText } = render(<PlayScreen />)
     fireEvent.click(getByText(/start turn/i))
-    expect(getByText(/Ana/)).toBeTruthy() // current player shown; the arm-on-arrival + hudPlayer wiring didn't break the render
+    // Acting player named in the HUD AND the context strip (deliberate redundancy —
+    // the strip stays visible while typing when the HUD scrolls away).
+    expect(getAllByText(/Ana/).length).toBeGreaterThanOrEqual(1)
   })
 
   it('holds the rescue clock while the resume prompt is up, arming it fresh on release', () => {

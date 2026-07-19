@@ -32,6 +32,7 @@ export function createGame(config: GameConfig, dict: Dictionary): GameState {
     winnerId: null,
     lastWord: null,
     dictVersion: dict.version,
+    capture: config.capture ?? true, // new games bump by default
   }
 }
 

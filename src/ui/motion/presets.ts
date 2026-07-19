@@ -17,6 +17,7 @@ export function beatDurationMs(beat: Beat, reduced: boolean): number {
     case 'hops': return beat.squares.length * HOP_STAGGER_MS + 400
     case 'climb': return 700
     case 'slither': return 1200
+    case 'knockback': return 500
     case 'settle': return 500
   }
 }

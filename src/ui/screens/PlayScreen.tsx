@@ -6,17 +6,19 @@ import { AnimatedTokenLayer } from '../AnimatedTokenLayer'
 import { TurnHud } from '../TurnHud'
 import { WordInput } from '../WordInput'
 import { ChainStrip } from '../ChainStrip'
+import { StandingsStrip } from '../StandingsStrip'
 import { HandoffCurtain } from '../HandoffCurtain'
 import { AimLayer } from '../AimLayer'
 import { EscapeVignette } from '../EscapeVignette'
 import { EscapeRing } from '../EscapeRing'
 import { ContextStrip } from '../ContextStrip'
-import { previewLanding } from '../aiming'
+import { capturePreview, previewLanding } from '../aiming'
 import { rejectMessage } from '../WordInput'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { useWakeLock } from '../useWakeLock'
 import { withScreenTransition } from '../viewTransition'
 import { useTurnAnimation } from '../useTurnAnimation'
+import { actingPlayerId } from '../timeline'
 import { useCountdown } from '../useCountdown'
 import { gameStore, useGameStore } from '../../store/appStore'
 import { RESCUE_MS, UNDO_PENALTY } from '../../store/gameStore'
@@ -41,6 +43,7 @@ export function PlayScreen({ holdClock = false }: { holdClock?: boolean }) {
   const undoState = useGameStore((s) => s.undoState)
   const undosUsed = useGameStore((s) => s.undosUsed)
   const lastEvents = useGameStore((s) => s.lastEvents)
+  const moveSeq = useGameStore((s) => s.moveSeq)
   const [stuckMode, setStuckMode] = useState(false)
   const [draft, setDraft] = useState('')
   const [inputFocused, setInputFocused] = useState(false)
@@ -49,7 +52,7 @@ export function PlayScreen({ holdClock = false }: { holdClock?: boolean }) {
 
   // Animation orchestrator: replays the committed move as token motion and gates
   // the curtain/input until it settles (ANIM_DONE). `presenting` is true while animating.
-  const { presenting, beat, onBeatDone, skip } = useTurnAnimation()
+  const { presenting, beat, onBeatDone, skip, presented } = useTurnAnimation()
   // Hold the pre-move stamp set while the token travels, so a word's letters never
   // appear ahead of the token; reveal the full committed set once it settles.
   const settledStamps = useRef(stamps)
@@ -108,9 +111,11 @@ export function PlayScreen({ holdClock = false }: { holdClock?: boolean }) {
         ),
       )
     : stamps
-  // Attribute the moving token to the acting player during its animation (not the
-  // committed next player) so the HUD reads honestly.
-  const hudPlayer = presenting && beat ? (game.players.find((p) => p.id === beat.playerId) ?? player) : player
+  // Attribute the HUD to the player who ACTED this turn (the mover / escaper) during
+  // the animation — NOT the beat's own token: a bump's knockback beat belongs to the
+  // VICTIM, and the HUD must never read as the victim's turn.
+  const actingId = actingPlayerId(lastEvents)
+  const hudPlayer = presenting && actingId ? (game.players.find((p) => p.id === actingId) ?? player) : player
 
   const onSubmit = (w: string): boolean => {
     if (escape) return gameStore.getState().resolveEscape(w)
@@ -124,6 +129,10 @@ export function PlayScreen({ holdClock = false }: { holdClock?: boolean }) {
   const draftLen = draft.trim().length
   const stripLanding = !escape && !stuckMode && !won && draftLen >= 1 ? previewLanding(game.board, player.square, draftLen) : null
   const draftValid = !game.requiredLetter || draftLen === 0 || draft.trim()[0].toUpperCase() === game.requiredLetter
+  // A bump the current draft would land (plain landings only) — surfaced in the strip too.
+  const stripBump = stripLanding && stripLanding.kind === 'plain' && draftValid
+    ? capturePreview(game.board, game.players, player.square, draftLen, player.id, game.capture ?? false)
+    : null
   const feedbackText = feedback ? rejectMessage(feedback.reason, { requiredLetter: escape || stuckMode ? null : game.requiredLetter, minLength }) : null
 
   return (
@@ -140,13 +149,14 @@ export function PlayScreen({ holdClock = false }: { holdClock?: boolean }) {
         stuckMode={stuckMode}
         escapeTotalMs={RESCUE_MS}
       />
+      <StandingsStrip players={game.players} lastEvents={lastEvents} moveSeq={moveSeq} />
       <div
         onClick={() => { if (presenting) skip() }}
         style={{ position: 'relative', border: '1px solid var(--line)', borderRadius: 14, padding: 14, background: 'linear-gradient(180deg, var(--paper-2), transparent)' }}
       >
         <BoardView board={game.board} />
         <StampLayer stamps={shownStamps} length={game.board.length} players={game.players} board={game.board} />
-        <AnimatedTokenLayer players={game.players} length={game.board.length} beat={beat} onBeatDone={onBeatDone} onHopLand={revealSquare} />
+        <AnimatedTokenLayer players={game.players} length={game.board.length} beat={beat} onBeatDone={onBeatDone} onHopLand={revealSquare} presented={presented} />
         {escape && !presenting && deadlineTs != null && (
           <EscapeVignette fraction={remainingMs / RESCUE_MS} />
         )}
@@ -158,6 +168,9 @@ export function PlayScreen({ holdClock = false }: { holdClock?: boolean }) {
             showReach={showReach}
             draftValid={draftValid}
             requiredLetter={game.requiredLetter}
+            players={game.players}
+            moverId={player.id}
+            captureOn={game.capture ?? false}
           />
         )}
         {handoff && !presenting && (
@@ -202,6 +215,7 @@ export function PlayScreen({ holdClock = false }: { holdClock?: boolean }) {
             player={player}
             requiredLetter={stuckMode ? null : game.requiredLetter}
             landing={stripLanding}
+            capture={stripBump}
             draftValid={draftValid}
             feedbackText={feedbackText}
             mode={escape ? 'escape' : stuckMode ? 'stuck' : 'chain'}

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useGameStore } from '../store/appStore'
-import { buildTimeline, type Beat } from './timeline'
+import { buildTimeline, presentedSquares, type Beat } from './timeline'
 
 // UI-side orchestrator: replays the last committed action's events as a beat
 // sequence, gating input/curtain (via `presenting`) until every beat reports done
@@ -11,7 +11,7 @@ import { buildTimeline, type Beat } from './timeline'
 // so there is no one-render lag between the move committing and presenting turning
 // true — that lag would otherwise flash the hand-off curtain and let a move's new
 // stamps be snapshotted as "pre-move".
-export function useTurnAnimation(): { presenting: boolean; beat: Beat | null; onBeatDone: () => void; skip: () => void } {
+export function useTurnAnimation(): { presenting: boolean; beat: Beat | null; onBeatDone: () => void; skip: () => void; presented: Record<string, number> } {
   const moveSeq = useGameStore((s) => s.moveSeq)
   const lastEvents = useGameStore((s) => s.lastEvents)
   const seen = useRef(0)
@@ -29,6 +29,8 @@ export function useTurnAnimation(): { presenting: boolean; beat: Beat | null; on
   const beat = presenting ? queue[index] : null
   const onBeatDone = () => setIndex((i) => Math.min(i + 1, queueRef.current.length))
   const skip = () => setIndex(queueRef.current.length)
+  // Where each token should render given the beats played so far (see presentedSquares).
+  const presented = presentedSquares(queue, index)
 
-  return { presenting, beat, onBeatDone, skip }
+  return { presenting, beat, onBeatDone, skip, presented }
 }

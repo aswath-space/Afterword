@@ -9,6 +9,9 @@ export interface GameConfig {
   boardLength: 30 | 50 | 100
   timer: TurnTimer
   seed: string
+  // Whether the "bump" rule is on: landing exactly on an opponent knocks them
+  // back. Optional; createGame defaults new games to ON.
+  capture?: boolean
 }
 export type GamePhase = 'awaiting-word' | 'awaiting-escape' | 'won'
 // `need` = the rescue word length actually required (≤ drop; drop capped at RESCUE_NEED_CAP).
@@ -26,6 +29,10 @@ export interface GameState {
   winnerId: PlayerId | null
   lastWord: string | null
   dictVersion: string
+  // Whether this game applies the capture ("bump") rule. Optional with a
+  // documented fallback (`state.capture ?? false`), mirroring PendingEscape.need:
+  // legacy persisted saves predate the field, so they resume capture-free.
+  capture?: boolean
 }
 export type RejectReason =
   | 'wrong-phase' | 'too-short' | 'wrong-start-letter'
@@ -36,6 +43,9 @@ export type GameEvent =
   | { type: 'ESCAPE_START'; playerId: PlayerId; head: number; drop: number }
   | { type: 'ESCAPE_SUCCESS'; playerId: PlayerId; head: number }
   | { type: 'ESCAPE_FAIL'; playerId: PlayerId; head: number; tail: number }
+  // A player was bumped back after an opponent landed exactly on their square.
+  // playerId = the victim; from/to = victim's squares; byPlayerId = the mover.
+  | { type: 'CAPTURE'; playerId: PlayerId; from: number; to: number; byPlayerId: PlayerId }
   | { type: 'STUCK'; playerId: PlayerId }
   | { type: 'WIN'; playerId: PlayerId }
   | { type: 'TURN'; playerId: PlayerId }

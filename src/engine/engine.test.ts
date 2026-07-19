@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { createGame } from './engine'
 import { createSetDictionary } from '../dictionary/dictionary'
-import type { GameConfig, PendingEscape } from './types'
+import type { GameConfig, GameState, PendingEscape } from './types'
+import { CAPTURE_KNOCKBACK } from './helpers'
 
 const dict = createSetDictionary(
   ['CARD', 'DREAM', 'MORE', 'ENTRY', 'DOG', 'RAT', 'TAR', 'ARC', 'CAT'],
@@ -498,5 +499,137 @@ describe('reducer guard branches', () => {
     const s = snakeState()
     const bigDrop = { ...s, pendingEscape: { ...s.pendingEscape!, drop: 5, need: 5 } }
     expect(resolveSnakeEscape(bigDrop, 'ZZZZ', dict)).toEqual({ ok: false, reason: 'rescue-too-short' })
+  })
+})
+
+describe('createGame carries the capture flag', () => {
+  it('defaults new games to capture ON, and honours an explicit value', () => {
+    expect(createGame(config({ capture: true }), dict).capture).toBe(true)
+    expect(createGame(config({ capture: false }), dict).capture).toBe(false)
+    expect(createGame(config(), dict).capture).toBe(true) // omitted → default on
+  })
+})
+
+describe('capture (bump) rule', () => {
+  // A permissive dictionary: capture cases only need words of a chosen LENGTH
+  // (movement = length); validity/chain rules are exercised elsewhere.
+  const anyWord = { isValid: () => true, version: 'cap-v1' }
+  const emblems = ['circle', 'diamond', 'triangle', 'hex']
+
+  // A hermetic snake/ladder-free state with players at chosen squares, capture on.
+  function stateWith(squares: Array<{ id: string; square: number }>, opts: Partial<GameState> = {}): GameState {
+    return {
+      board: { length: 100, snakes: [], ladders: [], seed: 's' },
+      timer: 'off',
+      players: squares.map((p, i) => ({ id: p.id, name: p.id, color: 'c', emblem: emblems[i], square: p.square })),
+      currentPlayerIndex: 0,
+      requiredLetter: null,
+      usedWords: [],
+      phase: 'awaiting-word',
+      pendingEscape: null,
+      winnerId: null,
+      lastWord: null,
+      dictVersion: 'cap-v1',
+      capture: true,
+      ...opts,
+    }
+  }
+
+  it('landing exactly on an opponent knocks them back CAPTURE_KNOCKBACK', () => {
+    const s = stateWith([{ id: 'p1', square: 10 }, { id: 'p2', square: 14 }]) // p1 plays 4 letters → 14
+    const r = submitWord(s, 'WXYZ', anyWord)
+    if (!r.ok) throw new Error('rejected')
+    const cap = r.events.find((e) => e.type === 'CAPTURE')
+    expect(cap).toMatchObject({ type: 'CAPTURE', playerId: 'p2', from: 14, to: 14 - CAPTURE_KNOCKBACK, byPlayerId: 'p1' })
+    expect(r.next.players.find((p) => p.id === 'p2')!.square).toBe(14 - CAPTURE_KNOCKBACK)
+    expect(r.next.players.find((p) => p.id === 'p1')!.square).toBe(14)
+  })
+
+  it('passing over an opponent does NOT capture', () => {
+    const s = stateWith([{ id: 'p1', square: 10 }, { id: 'p2', square: 12 }]) // p1 → 14 passes 12
+    const r = submitWord(s, 'WXYZ', anyWord)
+    if (!r.ok) throw new Error('rejected')
+    expect(r.events.every((e) => e.type !== 'CAPTURE')).toBe(true)
+    expect(r.next.players.find((p) => p.id === 'p2')!.square).toBe(12)
+  })
+
+  it('capture disabled → no CAPTURE events, opponent unmoved', () => {
+    const s = stateWith([{ id: 'p1', square: 10 }, { id: 'p2', square: 14 }], { capture: false })
+    const r = submitWord(s, 'WXYZ', anyWord)
+    if (!r.ok) throw new Error('rejected')
+    expect(r.events.every((e) => e.type !== 'CAPTURE')).toBe(true)
+    expect(r.next.players.find((p) => p.id === 'p2')!.square).toBe(14)
+  })
+
+  it('legacy state without the capture field → no capture (fallback OFF)', () => {
+    const s = stateWith([{ id: 'p1', square: 10 }, { id: 'p2', square: 14 }])
+    delete (s as { capture?: boolean }).capture
+    const r = submitWord(s, 'WXYZ', anyWord)
+    if (!r.ok) throw new Error('rejected')
+    expect(r.events.every((e) => e.type !== 'CAPTURE')).toBe(true)
+    expect(r.next.players.find((p) => p.id === 'p2')!.square).toBe(14)
+  })
+
+  it('knockback clamps to square 1', () => {
+    const s = stateWith([{ id: 'p1', square: 0 }, { id: 'p2', square: 3 }]) // p1 → 3
+    const r = submitWord(s, 'ABC', anyWord)
+    if (!r.ok) throw new Error('rejected')
+    expect(r.next.players.find((p) => p.id === 'p2')!.square).toBe(1) // 3 - 4 clamps to 1
+  })
+
+  it('captures all opponents sharing the destination', () => {
+    const s = stateWith([{ id: 'p1', square: 10 }, { id: 'p2', square: 14 }, { id: 'p3', square: 14 }])
+    const r = submitWord(s, 'WXYZ', anyWord)
+    if (!r.ok) throw new Error('rejected')
+    expect(r.events.filter((e) => e.type === 'CAPTURE').length).toBe(2)
+    expect(r.next.players.find((p) => p.id === 'p2')!.square).toBe(14 - CAPTURE_KNOCKBACK)
+    expect(r.next.players.find((p) => p.id === 'p3')!.square).toBe(14 - CAPTURE_KNOCKBACK)
+  })
+
+  it('never chain-captures: a victim knocked onto a bystander does not bump that bystander', () => {
+    // p1 lands on 14 (captures p2 → 10); p3 already rests on 10 (the knockback target).
+    const s = stateWith([{ id: 'p1', square: 10 }, { id: 'p2', square: 14 }, { id: 'p3', square: 14 - CAPTURE_KNOCKBACK }])
+    const r = submitWord(s, 'WXYZ', anyWord)
+    if (!r.ok) throw new Error('rejected')
+    // Exactly one capture (p2 only); p3 is untouched even though p2 lands on it.
+    expect(r.events.filter((e) => e.type === 'CAPTURE').map((e) => e.type === 'CAPTURE' && e.playerId)).toEqual(['p2'])
+    expect(r.next.players.find((p) => p.id === 'p3')!.square).toBe(14 - CAPTURE_KNOCKBACK) // unmoved
+    expect(r.next.players.find((p) => p.id === 'p2')!.square).toBe(14 - CAPTURE_KNOCKBACK) // co-located with p3
+  })
+
+  it('no capture on a winning move even if an opponent sits on the final square', () => {
+    const s = stateWith([{ id: 'p1', square: 96 }, { id: 'p2', square: 100 }]) // p1 plays 4 → 100 = win
+    const r = submitWord(s, 'WXYZ', anyWord)
+    if (!r.ok) throw new Error('rejected')
+    expect(r.events.some((e) => e.type === 'WIN')).toBe(true)
+    expect(r.events.every((e) => e.type !== 'CAPTURE')).toBe(true)
+  })
+
+  it('event order is [MOVE, CAPTURE, TURN] on a plain capture', () => {
+    const s = stateWith([{ id: 'p1', square: 10 }, { id: 'p2', square: 14 }])
+    const r = submitWord(s, 'WXYZ', anyWord)
+    if (!r.ok) throw new Error('rejected')
+    expect(r.events.map((e) => e.type)).toEqual(['MOVE', 'CAPTURE', 'TURN'])
+  })
+
+  it('capture then the mover climbs its own ladder → [MOVE, CAPTURE, LADDER, TURN]', () => {
+    const s = stateWith([{ id: 'p1', square: 10 }, { id: 'p2', square: 14 }],
+      { board: { length: 100, snakes: [], ladders: [{ foot: 14, top: 30 }], seed: 's' } })
+    const r = submitWord(s, 'WXYZ', anyWord) // p1 lands 14 (captures p2), then climbs to 30
+    if (!r.ok) throw new Error('rejected')
+    expect(r.events.map((e) => e.type)).toEqual(['MOVE', 'CAPTURE', 'LADDER', 'TURN'])
+    expect(r.next.players.find((p) => p.id === 'p1')!.square).toBe(30)
+    expect(r.next.players.find((p) => p.id === 'p2')!.square).toBe(14 - CAPTURE_KNOCKBACK)
+  })
+
+  it('capture on a snake head: victim knocked off, mover enters escape → [MOVE, CAPTURE, ESCAPE_START]', () => {
+    const s = stateWith([{ id: 'p1', square: 10 }, { id: 'p2', square: 14 }],
+      { board: { length: 100, snakes: [{ head: 14, tail: 4 }], ladders: [], seed: 's' } })
+    const r = submitWord(s, 'WXYZ', anyWord) // p1 lands 14 (captures p2), then the head snakes p1
+    if (!r.ok) throw new Error('rejected')
+    expect(r.events.map((e) => e.type)).toEqual(['MOVE', 'CAPTURE', 'ESCAPE_START'])
+    expect(r.next.phase).toBe('awaiting-escape')
+    expect(r.next.players.find((p) => p.id === 'p1')!.square).toBe(14) // clings to head
+    expect(r.next.players.find((p) => p.id === 'p2')!.square).toBe(14 - CAPTURE_KNOCKBACK)
   })
 })

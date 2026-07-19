@@ -1,7 +1,7 @@
 import type { Dictionary, GameEvent, GameState, PendingEscape, SubmitResult } from './types'
 import {
   RESCUE_NEED_CAP, advanceTurn, checkWord, currentPlayer, findLadder, findSnake,
-  lastLetter, normalize, updateSquare,
+  knockbackTarget, lastLetter, normalize, updateSquare,
 } from './helpers'
 
 export function submitWord(state: GameState, raw: string, dict: Dictionary): SubmitResult {
@@ -36,10 +36,27 @@ export function submitWord(state: GameState, raw: string, dict: Dictionary): Sub
 
   events.push({ type: 'MOVE', playerId: player.id, from, to: dest, squares: word.length })
 
+  // CAPTURE — every OTHER player resting exactly on the landing square is knocked
+  // back CAPTURE_KNOCKBACK (a pure slide, clamped >= 1; it never re-triggers a
+  // snake/ladder and never chain-captures a third player already on `dest`).
+  // Gated by the game's capture rule; legacy saves without the field fall back to
+  // OFF. Resolved BEFORE the mover's own ladder/snake so the events read
+  // MOVE → CAPTURE(s) → feature, and every landing branch below advances the
+  // knocked-back positions rather than the pre-capture ones.
+  let captured = state.players
+  if (state.capture ?? false) {
+    for (const victim of state.players) {
+      if (victim.id === player.id || victim.square !== dest) continue
+      const to = knockbackTarget(victim.square)
+      captured = updateSquare(captured, victim.id, to)
+      events.push({ type: 'CAPTURE', playerId: victim.id, from: dest, to, byPlayerId: player.id })
+    }
+  }
+
   // LADDER (endpoints are unique, so a square is never both a ladder foot and a snake head)
   const ladder = findLadder(state.board, dest)
   if (ladder) {
-    const players = updateSquare(state.players, player.id, ladder.top)
+    const players = updateSquare(captured, player.id, ladder.top)
     events.push({ type: 'LADDER', playerId: player.id, foot: ladder.foot, top: ladder.top })
     const advanced = advanceTurn({ ...base, players })
     events.push({ type: 'TURN', playerId: advanced.players[advanced.currentPlayerIndex].id })
@@ -49,7 +66,7 @@ export function submitWord(state: GameState, raw: string, dict: Dictionary): Sub
   // SNAKE — enter the escape window; token sits on the head, turn does NOT advance yet
   const snake = findSnake(state.board, dest)
   if (snake) {
-    const players = updateSquare(state.players, player.id, snake.head)
+    const players = updateSquare(captured, player.id, snake.head)
     const pendingEscape: PendingEscape = {
       playerId: player.id,
       fromSquare: snake.head,
@@ -62,7 +79,7 @@ export function submitWord(state: GameState, raw: string, dict: Dictionary): Sub
   }
 
   // NORMAL landing
-  const players = updateSquare(state.players, player.id, dest)
+  const players = updateSquare(captured, player.id, dest)
   const advanced = advanceTurn({ ...base, players })
   events.push({ type: 'TURN', playerId: advanced.players[advanced.currentPlayerIndex].id })
   return { ok: true, next: advanced, events }

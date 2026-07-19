@@ -292,6 +292,9 @@ export function createGameStore(deps: GameStoreDeps): StoreApi<GameStoreState> {
             players: game.players.map((p) => ({ id: p.id, name: p.name, color: p.color, emblem: p.emblem })),
             boardLength: game.board.length as 30 | 50 | 100,
             timer: game.timer,
+            // Preserve the Bumps setting on a rematch (?? false keeps a resumed legacy
+            // game's effective capture-free mode; createGame would otherwise default to on).
+            capture: game.capture ?? false,
             seed: game.board.seed,
           })
         },

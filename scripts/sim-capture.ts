@@ -15,7 +15,7 @@ import { buildWordList } from '../src/dictionary/buildWordList.mjs'
 import { generateBoard } from '../src/board/board'
 import { submitWord } from '../src/engine/submitWord'
 import { resolveSnakeEscape } from '../src/engine/resolveSnakeEscape'
-import { findLadder, findSnake, MIN_WORD_LENGTH } from '../src/engine/helpers'
+import { findLadder, findSnake, MIN_WORD_LENGTH, RESCUE_NEED_CAP } from '../src/engine/helpers'
 import type { Dictionary, GameState, PlayerState } from '../src/engine/types'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -83,10 +83,11 @@ function chooseChainWord(state: GameState, bot: Bot, rng: () => number): string 
     const word = pickWord(letter, len, used, rng)
     if (!word) continue
     const dest = player.square + len
+    const snake = findSnake(state.board, dest)
     let score: number
     if (dest >= state.board.length) score = 1e9 // win
     else if (findLadder(state.board, dest)) score = dest + 40 // ladder: big boost
-    else if (findSnake(state.board, dest)) score = dest - (findSnake(state.board, dest)!.head - findSnake(state.board, dest)!.tail) * 3 // avoid
+    else if (snake) score = dest - (snake.head - snake.tail) * 3 // avoid
     else if (state.capture && occupied.has(dest) && dest <= leader) score = dest + 30 // bump a leader
     else score = dest
     cands.push({ word, score })
@@ -103,7 +104,7 @@ function chooseChainWord(state: GameState, bot: Bot, rng: () => number): string 
 // Choose a rescue word (length >= need, any start), or null to give up.
 function chooseRescue(state: GameState, bot: Bot, rng: () => number): string | null {
   const esc = state.pendingEscape!
-  const need = esc.need ?? Math.min(esc.drop, 8)
+  const need = esc.need ?? Math.min(esc.drop, RESCUE_NEED_CAP)
   const used = new Set(state.usedWords)
   for (let len = need; len <= bot.maxLen; len++) {
     const w = pickWord(null, len, used, rng)

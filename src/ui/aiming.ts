@@ -1,5 +1,5 @@
 import type { Board, PlayerState } from '../engine/types'
-import { CAPTURE_KNOCKBACK, findLadder, findSnake, MIN_WORD_LENGTH } from '../engine/helpers'
+import { findLadder, findSnake, knockbackTarget, MIN_WORD_LENGTH } from '../engine/helpers'
 
 export type Landing =
   | { kind: 'too-short' }
@@ -33,7 +33,7 @@ export function capturePreview(
   if (dest >= board.length) return null // win — no capture
   const victim = players.find((p) => p.id !== moverId && p.square === dest)
   if (!victim) return null
-  return { victim, to: Math.max(1, dest - CAPTURE_KNOCKBACK) }
+  return { victim, to: knockbackTarget(dest) }
 }
 
 // Ladder feet + snake heads this turn could reach: distance in [MIN_WORD_LENGTH, reach].

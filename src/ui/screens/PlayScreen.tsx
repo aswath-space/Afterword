@@ -18,6 +18,7 @@ import { ConfirmDialog } from '../ConfirmDialog'
 import { useWakeLock } from '../useWakeLock'
 import { withScreenTransition } from '../viewTransition'
 import { useTurnAnimation } from '../useTurnAnimation'
+import { actingPlayerId } from '../timeline'
 import { useCountdown } from '../useCountdown'
 import { gameStore, useGameStore } from '../../store/appStore'
 import { RESCUE_MS, UNDO_PENALTY } from '../../store/gameStore'
@@ -51,7 +52,7 @@ export function PlayScreen({ holdClock = false }: { holdClock?: boolean }) {
 
   // Animation orchestrator: replays the committed move as token motion and gates
   // the curtain/input until it settles (ANIM_DONE). `presenting` is true while animating.
-  const { presenting, beat, onBeatDone, skip } = useTurnAnimation()
+  const { presenting, beat, onBeatDone, skip, presented } = useTurnAnimation()
   // Hold the pre-move stamp set while the token travels, so a word's letters never
   // appear ahead of the token; reveal the full committed set once it settles.
   const settledStamps = useRef(stamps)
@@ -112,9 +113,8 @@ export function PlayScreen({ holdClock = false }: { holdClock?: boolean }) {
     : stamps
   // Attribute the HUD to the player who ACTED this turn (the mover / escaper) during
   // the animation — NOT the beat's own token: a bump's knockback beat belongs to the
-  // VICTIM, and the HUD must never read as the victim's turn. The first non-TURN event
-  // is always the actor (MOVE for a move, ESCAPE_* for an escape).
-  const actingId = lastEvents.find((e) => e.type !== 'TURN')?.playerId
+  // VICTIM, and the HUD must never read as the victim's turn.
+  const actingId = actingPlayerId(lastEvents)
   const hudPlayer = presenting && actingId ? (game.players.find((p) => p.id === actingId) ?? player) : player
 
   const onSubmit = (w: string): boolean => {
@@ -156,7 +156,7 @@ export function PlayScreen({ holdClock = false }: { holdClock?: boolean }) {
       >
         <BoardView board={game.board} />
         <StampLayer stamps={shownStamps} length={game.board.length} players={game.players} board={game.board} />
-        <AnimatedTokenLayer players={game.players} length={game.board.length} beat={beat} onBeatDone={onBeatDone} onHopLand={revealSquare} />
+        <AnimatedTokenLayer players={game.players} length={game.board.length} beat={beat} onBeatDone={onBeatDone} onHopLand={revealSquare} presented={presented} />
         {escape && !presenting && deadlineTs != null && (
           <EscapeVignette fraction={remainingMs / RESCUE_MS} />
         )}

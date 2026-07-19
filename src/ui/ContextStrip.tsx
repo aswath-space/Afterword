@@ -50,7 +50,8 @@ export function ContextStrip({
     else if (landing.kind === 'win') readout = chip('var(--teal)', 'WIN!')
     else if (landing.kind === 'ladder') readout = chip('var(--brass)', `▲ climbs to ${landing.top}`, 'var(--ink)')
     else if (landing.kind === 'snake') readout = chip('var(--plum)', `▼ drops to ${landing.tail}`)
-    else if (capture) readout = chip('var(--terracotta)', `↩ bumps ${capture.victim.name} → ${capture.to}`)
+    // Darkened terracotta (mixed with --ink) so cream text clears AA in both themes.
+    else if (capture) readout = chip('color-mix(in srgb, var(--terracotta) 55%, var(--ink))', `↩ bumps ${capture.victim.name} → ${capture.to}`)
     else readout = chip('var(--ink)', `→ land ${landing.square}`)
   }
 

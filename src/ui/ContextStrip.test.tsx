@@ -62,4 +62,12 @@ describe('ContextStrip', () => {
     expect(getByText('any word · 8+ letters')).toBeTruthy()
     expect(container.querySelector('[data-letter-tile]')).toBeNull() // chain letter is suspended
   })
+
+  it('reads out a bump on a plain landing that lands on an opponent', () => {
+    const foe: PlayerState = { id: 'p2', name: 'Ben', color: 'var(--p2)', emblem: 'diamond', square: 9 }
+    const { getByText } = render(
+      <ContextStrip player={player} requiredLetter="S" landing={{ kind: 'plain', square: 9 }} capture={{ victim: foe, to: 5 }} />,
+    )
+    expect(getByText('↩ bumps Ben → 5')).toBeTruthy()
+  })
 })

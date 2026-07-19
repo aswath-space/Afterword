@@ -1,7 +1,7 @@
 import type { Dictionary, GameEvent, GameState, PendingEscape, SubmitResult } from './types'
 import {
-  CAPTURE_KNOCKBACK, RESCUE_NEED_CAP, advanceTurn, checkWord, currentPlayer, findLadder,
-  findSnake, lastLetter, normalize, updateSquare,
+  RESCUE_NEED_CAP, advanceTurn, checkWord, currentPlayer, findLadder, findSnake,
+  knockbackTarget, lastLetter, normalize, updateSquare,
 } from './helpers'
 
 export function submitWord(state: GameState, raw: string, dict: Dictionary): SubmitResult {
@@ -47,7 +47,7 @@ export function submitWord(state: GameState, raw: string, dict: Dictionary): Sub
   if (state.capture ?? false) {
     for (const victim of state.players) {
       if (victim.id === player.id || victim.square !== dest) continue
-      const to = Math.max(1, victim.square - CAPTURE_KNOCKBACK)
+      const to = knockbackTarget(victim.square)
       captured = updateSquare(captured, victim.id, to)
       events.push({ type: 'CAPTURE', playerId: victim.id, from: dest, to, byPlayerId: player.id })
     }

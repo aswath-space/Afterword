@@ -18,6 +18,13 @@ export const RESCUE_NEED_CAP = 8
 // design for a word game — so no catch-up rule was added.
 export const CAPTURE_KNOCKBACK = 4
 
+// Where a bumped player lands: knocked back CAPTURE_KNOCKBACK, clamped to square 1.
+// The single source of truth for both the engine rule (submitWord) and the on-screen
+// aim preview (capturePreview), so the rule and its preview can never drift apart.
+export function knockbackTarget(fromSquare: number): number {
+  return Math.max(1, fromSquare - CAPTURE_KNOCKBACK)
+}
+
 export function normalize(word: string): string {
   return word.trim().toUpperCase()
 }

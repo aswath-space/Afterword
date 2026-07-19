@@ -42,10 +42,19 @@ const TOKEN_PCT = ['7%', '7%', '5.2%', '4.6%', '4%'] as const
 // no flash) then animates to its END, calling onBeatDone on completion. Under
 // reduced motion (also the SSR/jsdom default) it reports done immediately and the
 // token sits at its committed square via React-rendered left/top.
-export function AnimatedTokenLayer({ players, length, beat, onBeatDone, onHopLand }: {
+export function AnimatedTokenLayer({ players, length, beat, onBeatDone, onHopLand, presented = {} }: {
   players: PlayerState[]; length: number; beat: Beat | null; onBeatDone: () => void; onHopLand?: (square: number) => void
+  // Where each token should render given the beats played so far (from useTurnAnimation).
+  // A non-active token uses this — the square the animation has REACHED — instead of its
+  // final committed square, so a bumped victim doesn't slide back before it is hit and a
+  // post-bump climber doesn't jump to the ladder top during the victim's knockback beat.
+  presented?: Record<string, number>
 }) {
   const refs = useRef<Record<string, HTMLDivElement | null>>({})
+  // Latest presented map, read by the beat cleanup (which runs after the index has
+  // advanced, so it must settle to the AFTER-beat position, not the closure's stale one).
+  const presentedRef = useRef(presented)
+  presentedRef.current = presented
   const layout = boardLayout(length)
   const posXY = (square: number) => {
     // Square 0 ("start") rests ON square 1: the old off-board rest point (one cell
@@ -60,19 +69,26 @@ export function AnimatedTokenLayer({ players, length, beat, onBeatDone, onHopLan
     const c = posXY(square)
     return { left: `${c.x}%`, top: `${c.y}%` }
   }
-  // Cohorts group by the VISUAL square (square 0 rests on square 1), so starting
-  // tokens fan out together with any token already sitting on square 1.
-  const visualSquare = (pl: PlayerState) => Math.max(pl.square, 1)
-  const cohortOf = (p: PlayerState) => players.filter((pl) => visualSquare(pl) === visualSquare(p))
+  // A token's CURRENT square = where the animation has reached (presented), falling
+  // back to the committed square for players with no beat this turn. Cohorts group by
+  // the VISUAL square (square 0 rests on square 1), so starting tokens fan out together
+  // with any token already sitting on square 1. Both position AND size derive from this
+  // so a token only shrinks/fans once it is actually co-located in the presented state.
+  const squareOf = (pl: PlayerState, pres: Record<string, number>) => pres[pl.id] ?? pl.square
+  const cohortWith = (p: PlayerState, pres: Record<string, number>) => {
+    const vis = (pl: PlayerState) => Math.max(squareOf(pl, pres), 1)
+    return players.filter((pl) => vis(pl) === vis(p))
+  }
   // Resting position: square centre plus this token's FAN slot when co-located.
-  const restPos = (p: PlayerState) => {
-    const cohort = cohortOf(p)
+  const restPosWith = (p: PlayerState, pres: Record<string, number>) => {
+    const cohort = cohortWith(p, pres)
     const [dx, dy] = FAN[Math.min(cohort.length, 4)]?.[cohort.findIndex((pl) => pl.id === p.id)] ?? [0, 0]
-    const c = posXY(p.square)
+    const c = posXY(squareOf(p, pres))
     return { left: `${c.x + dx}%`, top: `${c.y + dy}%` }
   }
+  const restPos = (p: PlayerState) => restPosWith(p, presented)
   // Token diameter shrinks when the square is shared (see FAN/TOKEN_PCT).
-  const tokenSize = (p: PlayerState) => TOKEN_PCT[Math.min(cohortOf(p).length, 4)]
+  const tokenSize = (p: PlayerState) => TOKEN_PCT[Math.min(cohortWith(p, presented).length, 4)]
   const ptPos = (p: { x: number; y: number }) => ({ left: `${(p.x / layout.width) * 100}%`, top: `${(p.y / layout.height) * 100}%` })
   const reduced = prefersReducedMotion()
 
@@ -149,8 +165,11 @@ export function AnimatedTokenLayer({ players, length, beat, onBeatDone, onHopLan
     return () => {
       cancelled = true
       el.getAnimations?.().forEach((a) => a.cancel())
-      const committed = players.find((pl) => pl.id === beat.playerId)
-      if (committed) settle(restPos(committed))
+      // Settle to the AFTER-beat position: this cleanup runs once the index has already
+      // advanced, so read the latest presented map (via ref) — a mover that still has a
+      // climb ahead of it stays at the ladder foot here rather than snapping to the top.
+      const mover = players.find((pl) => pl.id === beat.playerId)
+      if (mover) settle(restPosWith(mover, presentedRef.current))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [beat, reduced])

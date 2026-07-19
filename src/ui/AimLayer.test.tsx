@@ -2,9 +2,11 @@
 import { describe, it, expect } from 'vitest'
 import { render } from '@testing-library/react'
 import { AimLayer } from './AimLayer'
-import type { Board } from '../engine/types'
+import type { Board, PlayerState } from '../engine/types'
 
 const board = (over: Partial<Board> = {}): Board => ({ length: 30, snakes: [], ladders: [], seed: 't', ...over })
+const mover: PlayerState = { id: 'me', name: 'Me', color: 'var(--p1)', emblem: 'circle', square: 5 }
+const foeAt = (square: number): PlayerState => ({ id: 'foe', name: 'Foe', color: 'var(--p2)', emblem: 'diamond', square })
 
 describe('AimLayer', () => {
   it('marks the landing square with a climb consequence', () => {
@@ -59,5 +61,27 @@ describe('AimLayer', () => {
     )
     expect(container.querySelector('[data-reach="8"]')?.textContent).toBe('▲')
     expect(container.querySelector('[data-reach="10"]')?.textContent).toBe('▼')
+  })
+
+  it('shows a bump tag when the draft lands exactly on an opponent (capture on)', () => {
+    const { container } = render(
+      <AimLayer board={board()} from={5} draftLength={4} players={[mover, foeAt(9)]} moverId="me" captureOn />,
+    )
+    // lands on 9, foe rests there → knocked to max(1, 9-4)=5
+    expect(container.querySelector('[data-landing="9"]')?.textContent).toBe('bumps Foe → 5')
+  })
+
+  it('shows no bump tag when capture is off, and the plain label instead', () => {
+    const { container } = render(
+      <AimLayer board={board()} from={5} draftLength={4} players={[mover, foeAt(9)]} moverId="me" captureOn={false} />,
+    )
+    expect(container.querySelector('[data-landing="9"]')?.textContent).toBe('land 9')
+  })
+
+  it('suppresses the bump tag when the landing is a ladder foot (feature headline wins)', () => {
+    const { container } = render(
+      <AimLayer board={board({ ladders: [{ foot: 9, top: 18 }] })} from={5} draftLength={4} players={[mover, foeAt(9)]} moverId="me" captureOn />,
+    )
+    expect(container.querySelector('[data-landing="9"]')?.textContent).toBe('▲ climbs to 18')
   })
 })

@@ -574,7 +574,7 @@ describe('capture (bump) rule', () => {
     const s = stateWith([{ id: 'p1', square: 0 }, { id: 'p2', square: 3 }]) // p1 → 3
     const r = submitWord(s, 'ABC', anyWord)
     if (!r.ok) throw new Error('rejected')
-    expect(r.next.players.find((p) => p.id === 'p2')!.square).toBe(1) // 3 - 5 clamps to 1
+    expect(r.next.players.find((p) => p.id === 'p2')!.square).toBe(1) // 3 - 4 clamps to 1
   })
 
   it('captures all opponents sharing the destination', () => {
@@ -584,6 +584,17 @@ describe('capture (bump) rule', () => {
     expect(r.events.filter((e) => e.type === 'CAPTURE').length).toBe(2)
     expect(r.next.players.find((p) => p.id === 'p2')!.square).toBe(14 - CAPTURE_KNOCKBACK)
     expect(r.next.players.find((p) => p.id === 'p3')!.square).toBe(14 - CAPTURE_KNOCKBACK)
+  })
+
+  it('never chain-captures: a victim knocked onto a bystander does not bump that bystander', () => {
+    // p1 lands on 14 (captures p2 → 10); p3 already rests on 10 (the knockback target).
+    const s = stateWith([{ id: 'p1', square: 10 }, { id: 'p2', square: 14 }, { id: 'p3', square: 14 - CAPTURE_KNOCKBACK }])
+    const r = submitWord(s, 'WXYZ', anyWord)
+    if (!r.ok) throw new Error('rejected')
+    // Exactly one capture (p2 only); p3 is untouched even though p2 lands on it.
+    expect(r.events.filter((e) => e.type === 'CAPTURE').map((e) => e.type === 'CAPTURE' && e.playerId)).toEqual(['p2'])
+    expect(r.next.players.find((p) => p.id === 'p3')!.square).toBe(14 - CAPTURE_KNOCKBACK) // unmoved
+    expect(r.next.players.find((p) => p.id === 'p2')!.square).toBe(14 - CAPTURE_KNOCKBACK) // co-located with p3
   })
 
   it('no capture on a winning move even if an opponent sits on the final square', () => {

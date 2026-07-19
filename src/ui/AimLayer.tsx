@@ -73,7 +73,8 @@ export function AimLayer({ board, from, draftLength, reach = 12, showReach = tru
             style={{
               position: 'absolute', top: '100%', marginTop: 3, whiteSpace: 'nowrap',
               fontFamily: 'var(--font-sans)', fontSize: 11, fontWeight: 700, padding: '2px 6px', borderRadius: 6,
-              background: bump ? 'var(--terracotta)' : draftValid ? 'var(--ink)' : 'var(--ink-soft)', color: 'var(--paper)',
+              // Darkened terracotta (mixed with --ink) so cream text clears AA in both themes.
+              background: bump ? 'color-mix(in srgb, var(--terracotta) 55%, var(--ink))' : draftValid ? 'var(--ink)' : 'var(--ink-soft)', color: 'var(--paper)',
             }}
           >
             {draftValid || !requiredLetter

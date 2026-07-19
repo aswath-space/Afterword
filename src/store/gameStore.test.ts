@@ -539,3 +539,30 @@ describe('animation replay hooks (lastEvents + moveSeq)', () => {
     expect(store.getState().lastEvents.some((e) => e.type === 'MOVE')).toBe(true)
   })
 })
+
+describe('playAgain preserves the Bumps (capture) setting', () => {
+  const base: GameConfig = {
+    players: [
+      { id: 'p1', name: 'Ana', color: 'var(--p1)', emblem: 'circle' },
+      { id: 'p2', name: 'Ben', color: 'var(--p2)', emblem: 'diamond' },
+    ],
+    boardLength: 30,
+    timer: 'off',
+    seed: 'again-seed',
+  }
+
+  it('a Bumps-off game replays Bumps-off (not the default on)', () => {
+    const store = makeStore()
+    store.getState().configureAndStart({ ...base, capture: false })
+    expect(store.getState().game?.capture).toBe(false)
+    store.getState().playAgain()
+    expect(store.getState().game?.capture).toBe(false)
+  })
+
+  it('a Bumps-on game replays Bumps-on', () => {
+    const store = makeStore()
+    store.getState().configureAndStart({ ...base, capture: true })
+    store.getState().playAgain()
+    expect(store.getState().game?.capture).toBe(true)
+  })
+})

@@ -1,8 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { previewLanding, reachFeatures } from './aiming'
-import type { Board } from '../engine/types'
+import { capturePreview, previewLanding, reachFeatures } from './aiming'
+import { CAPTURE_KNOCKBACK } from '../engine/helpers'
+import type { Board, PlayerState } from '../engine/types'
 
 const board = (over: Partial<Board> = {}): Board => ({ length: 30, snakes: [], ladders: [], seed: 't', ...over })
+const mkPlayers = (squares: Record<string, number>): PlayerState[] =>
+  Object.entries(squares).map(([id, square]) => ({ id, name: id, color: 'c', emblem: 'circle', square }))
 
 describe('previewLanding', () => {
   it('is too-short below the minimum word length', () => {
@@ -19,6 +22,31 @@ describe('previewLanding', () => {
   })
   it('reports a win when the landing reaches or passes the final square', () => {
     expect(previewLanding(board(), 27, 4)).toEqual({ kind: 'win', square: 30 })
+  })
+})
+
+describe('capturePreview', () => {
+  const players = mkPlayers({ me: 5, foe: 9 }) // a 4-letter word from 5 lands on 9 = foe
+
+  it('reports the bump when the draft lands exactly on an opponent', () => {
+    const r = capturePreview(board(), players, 5, 4, 'me', true)
+    expect(r).toEqual({ victim: players[1], to: 9 - CAPTURE_KNOCKBACK })
+  })
+  it('clamps the knockback target to square 1', () => {
+    const r = capturePreview(board(), mkPlayers({ me: 0, foe: 3 }), 0, 3, 'me', true)
+    expect(r?.to).toBe(1)
+  })
+  it('is null when passing over an opponent (not landing on them)', () => {
+    expect(capturePreview(board(), mkPlayers({ me: 5, foe: 8 }), 5, 4, 'me', true)).toBeNull()
+  })
+  it('is null when capture is off', () => {
+    expect(capturePreview(board(), players, 5, 4, 'me', false)).toBeNull()
+  })
+  it('is null on a winning landing (capture never applies to a win)', () => {
+    expect(capturePreview(board(), mkPlayers({ me: 27, foe: 30 }), 27, 4, 'me', true)).toBeNull()
+  })
+  it('never targets the mover itself', () => {
+    expect(capturePreview(board(), mkPlayers({ me: 9 }), 5, 4, 'me', true)).toBeNull()
   })
 })
 

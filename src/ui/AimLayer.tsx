@@ -1,6 +1,6 @@
-import type { Board } from '../engine/types'
+import type { Board, PlayerState } from '../engine/types'
 import { boardLayout } from './boardLayout'
-import { previewLanding, reachFeatures, type Landing } from './aiming'
+import { capturePreview, previewLanding, reachFeatures, type Landing } from './aiming'
 
 function label(l: Landing): string {
   switch (l.kind) {
@@ -12,7 +12,7 @@ function label(l: Landing): string {
   }
 }
 
-export function AimLayer({ board, from, draftLength, reach = 12, showReach = true, draftValid = true, requiredLetter = null }: { board: Board; from: number; draftLength: number; reach?: number; showReach?: boolean; draftValid?: boolean; requiredLetter?: string | null }) {
+export function AimLayer({ board, from, draftLength, reach = 12, showReach = true, draftValid = true, requiredLetter = null, players = [], moverId = '', captureOn = false }: { board: Board; from: number; draftLength: number; reach?: number; showReach?: boolean; draftValid?: boolean; requiredLetter?: string | null; players?: PlayerState[]; moverId?: string; captureOn?: boolean }) {
   const layout = boardLayout(board.length)
   const wPct = 100 / layout.cols
   const hPct = 100 / layout.rows
@@ -22,6 +22,10 @@ export function AimLayer({ board, from, draftLength, reach = 12, showReach = tru
   }
   const features = reachFeatures(board, from, reach)
   const landing = previewLanding(board, from, draftLength)
+  // A bump the current draft would land: shown as a tag on the landing label so the
+  // player aims it deliberately. Only a plain landing on an opponent reads as a bump
+  // (a ladder/snake/win at the square is the headline instead).
+  const bump = draftValid && landing.kind === 'plain' ? capturePreview(board, players, from, draftLength, moverId, captureOn) : null
 
   return (
     <div aria-hidden="true" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
@@ -69,10 +73,12 @@ export function AimLayer({ board, from, draftLength, reach = 12, showReach = tru
             style={{
               position: 'absolute', top: '100%', marginTop: 3, whiteSpace: 'nowrap',
               fontFamily: 'var(--font-sans)', fontSize: 11, fontWeight: 700, padding: '2px 6px', borderRadius: 6,
-              background: draftValid ? 'var(--ink)' : 'var(--ink-soft)', color: 'var(--paper)',
+              background: bump ? 'var(--terracotta)' : draftValid ? 'var(--ink)' : 'var(--ink-soft)', color: 'var(--paper)',
             }}
           >
-            {draftValid || !requiredLetter ? label(landing) : `needs ${requiredLetter}`}
+            {draftValid || !requiredLetter
+              ? (bump ? `bumps ${bump.victim.name} → ${bump.to}` : label(landing))
+              : `needs ${requiredLetter}`}
           </span>
         </div>
       )}

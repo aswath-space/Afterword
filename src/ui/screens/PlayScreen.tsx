@@ -11,7 +11,7 @@ import { AimLayer } from '../AimLayer'
 import { EscapeVignette } from '../EscapeVignette'
 import { EscapeRing } from '../EscapeRing'
 import { ContextStrip } from '../ContextStrip'
-import { previewLanding } from '../aiming'
+import { capturePreview, previewLanding } from '../aiming'
 import { rejectMessage } from '../WordInput'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { useWakeLock } from '../useWakeLock'
@@ -124,6 +124,10 @@ export function PlayScreen({ holdClock = false }: { holdClock?: boolean }) {
   const draftLen = draft.trim().length
   const stripLanding = !escape && !stuckMode && !won && draftLen >= 1 ? previewLanding(game.board, player.square, draftLen) : null
   const draftValid = !game.requiredLetter || draftLen === 0 || draft.trim()[0].toUpperCase() === game.requiredLetter
+  // A bump the current draft would land (plain landings only) — surfaced in the strip too.
+  const stripBump = stripLanding && stripLanding.kind === 'plain' && draftValid
+    ? capturePreview(game.board, game.players, player.square, draftLen, player.id, game.capture ?? false)
+    : null
   const feedbackText = feedback ? rejectMessage(feedback.reason, { requiredLetter: escape || stuckMode ? null : game.requiredLetter, minLength }) : null
 
   return (
@@ -158,6 +162,9 @@ export function PlayScreen({ holdClock = false }: { holdClock?: boolean }) {
             showReach={showReach}
             draftValid={draftValid}
             requiredLetter={game.requiredLetter}
+            players={game.players}
+            moverId={player.id}
+            captureOn={game.capture ?? false}
           />
         )}
         {handoff && !presenting && (
@@ -202,6 +209,7 @@ export function PlayScreen({ holdClock = false }: { holdClock?: boolean }) {
             player={player}
             requiredLetter={stuckMode ? null : game.requiredLetter}
             landing={stripLanding}
+            capture={stripBump}
             draftValid={draftValid}
             feedbackText={feedbackText}
             mode={escape ? 'escape' : stuckMode ? 'stuck' : 'chain'}

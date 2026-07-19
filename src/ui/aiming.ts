@@ -1,5 +1,5 @@
-import type { Board } from '../engine/types'
-import { findLadder, findSnake, MIN_WORD_LENGTH } from '../engine/helpers'
+import type { Board, PlayerState } from '../engine/types'
+import { CAPTURE_KNOCKBACK, findLadder, findSnake, MIN_WORD_LENGTH } from '../engine/helpers'
 
 export type Landing =
   | { kind: 'too-short' }
@@ -19,6 +19,21 @@ export function previewLanding(board: Board, from: number, n: number): Landing {
   const snake = findSnake(board, square)
   if (snake) return { kind: 'snake', square, tail: snake.tail, drop: snake.head - snake.tail }
   return { kind: 'plain', square }
+}
+
+// A bump the current draft would land: the opponent resting exactly on the landing
+// square, and where they'd be knocked back to. Null when capture is off, the word is
+// too short, the landing wins (capture never applies to a win), or nobody is there.
+// Pure occupancy read layered on top of previewLanding, so that helper stays board-only.
+export function capturePreview(
+  board: Board, players: PlayerState[], from: number, n: number, moverId: string, captureOn: boolean,
+): { victim: PlayerState; to: number } | null {
+  if (!captureOn || n < MIN_WORD_LENGTH) return null
+  const dest = from + n
+  if (dest >= board.length) return null // win — no capture
+  const victim = players.find((p) => p.id !== moverId && p.square === dest)
+  if (!victim) return null
+  return { victim, to: Math.max(1, dest - CAPTURE_KNOCKBACK) }
 }
 
 // Ladder feet + snake heads this turn could reach: distance in [MIN_WORD_LENGTH, reach].

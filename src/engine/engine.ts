@@ -41,6 +41,6 @@ export function createEngine(dict: Dictionary): Engine {
     submitWord: (state, word) => submitWord(state, word, dict),
     resolveSnakeEscape: (state, word) => resolveSnakeEscape(state, word, dict),
     useStuck: (state, word) => useStuck(state, word, dict),
-    forfeitTurn: (state) => forfeitTurn(state),
+    forfeitTurn,
   }
 }

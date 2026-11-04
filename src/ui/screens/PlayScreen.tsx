@@ -6,7 +6,7 @@ import { AnimatedTokenLayer } from '../AnimatedTokenLayer'
 import { TurnHud } from '../TurnHud'
 import { WordInput } from '../WordInput'
 import { ChainStrip } from '../ChainStrip'
-import { HandoffCurtain } from '../HandoffCurtain'
+import { HandoffCurtain, type HandoffRecap } from '../HandoffCurtain'
 import { AimLayer } from '../AimLayer'
 import { EscapeVignette } from '../EscapeVignette'
 import { EscapeRing } from '../EscapeRing'
@@ -19,13 +19,33 @@ import { withScreenTransition } from '../viewTransition'
 import { useTurnAnimation } from '../useTurnAnimation'
 import { useCountdown } from '../useCountdown'
 import { gameStore, useGameStore } from '../../store/appStore'
-import { RESCUE_MS, UNDO_PENALTY } from '../../store/gameStore'
-import { RESCUE_NEED_CAP } from '../../engine/helpers'
+import { RESCUE_MS, takeBackCost, type ChainEntry } from '../../store/gameStore'
+import { MIN_WORD_LENGTH, findEvent, rescueNeed } from '../../engine/helpers'
+import type { GameEvent, PlayerState } from '../../engine/types'
 
 const secondaryBtn: React.CSSProperties = {
   fontFamily: 'var(--font-sans)', fontSize: 'var(--fs-secondary, 13px)', fontWeight: 600, color: 'var(--ink-soft)',
   background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px 0', textDecoration: 'underline',
   minHeight: 44, display: 'inline-flex', alignItems: 'center', // ≥44px tap height
+}
+
+// The last-move story for the incoming player, from the transient event log
+// (absent after a reload — the recap simply doesn't render then).
+function lastMoveRecap(chainLog: ChainEntry[], lastEvents: GameEvent[], players: PlayerState[]): HandoffRecap | null {
+  const entry = chainLog[chainLog.length - 1]
+  if (!entry || findEvent(lastEvents, 'STUCK')) return null
+  const mover = players.find((p) => p.id === entry.playerId)
+  if (!mover) return null
+  const base = { word: entry.word, playerName: mover.name, playerColor: mover.color }
+  const ladder = findEvent(lastEvents, 'LADDER')
+  if (ladder) return { ...base, from: ladder.foot, to: ladder.top, feature: 'ladder' }
+  const fail = findEvent(lastEvents, 'ESCAPE_FAIL')
+  if (fail) return { ...base, from: fail.head, to: fail.tail, feature: 'snake-slid' }
+  const rescued = findEvent(lastEvents, 'ESCAPE_SUCCESS')
+  if (rescued) return { ...base, from: rescued.head, to: rescued.head, feature: 'snake-escaped' }
+  const move = findEvent(lastEvents, 'MOVE')
+  if (move) return { ...base, from: move.from, to: move.to }
+  return null
 }
 
 // holdClock: true while the App-level ResumePrompt is open over this screen — the
@@ -88,17 +108,14 @@ export function PlayScreen({ holdClock = false }: { holdClock?: boolean }) {
   const player = game.players[game.currentPlayerIndex]
   const escape = game.phase === 'awaiting-escape'
   const won = game.phase === 'won'
-  // Canonical rescue requirement: capped at RESCUE_NEED_CAP (legacy saves lack
-  // `need`, so apply the same fallback the engine uses).
-  const need = escape && game.pendingEscape
-    ? (game.pendingEscape.need ?? Math.min(game.pendingEscape.drop, RESCUE_NEED_CAP))
-    : null
-  const minLength = escape ? (need ?? 3) : 3
+  const need = escape && game.pendingEscape ? rescueNeed(game.pendingEscape) : null
+  const minLength = need ?? MIN_WORD_LENGTH
   // Only show a clock once its deadline is actually armed: escapes arm on token
   // arrival, turn clocks arm at beginTurn — and a resumed game has NO deadline
   // until play re-arms one (otherwise a dead "0:00" shows behind the resume prompt).
   const showClock = deadlineTs != null && (escape || (game.timer !== 'off' && !handoff))
-  const showReach = inputFocused || draft.trim().length >= 1
+  const draftLen = draft.trim().length
+  const showReach = inputFocused || draftLen >= 1
   // While presenting: show pre-move stamps plus the squares the token has already
   // landed this move (per-letter reveal). On settle: the full committed set.
   const shownStamps = presenting
@@ -121,7 +138,6 @@ export function PlayScreen({ holdClock = false }: { holdClock?: boolean }) {
   // Context strip inputs: the live landing for the current draft, whether the draft
   // obeys the first-letter rule, and the rejection text (surfaced in-strip because
   // the below-input message can render under the fold).
-  const draftLen = draft.trim().length
   const stripLanding = !escape && !stuckMode && !won && draftLen >= 1 ? previewLanding(game.board, player.square, draftLen) : null
   const draftValid = !game.requiredLetter || draftLen === 0 || draft.trim()[0].toUpperCase() === game.requiredLetter
   const feedbackText = feedback ? rejectMessage(feedback.reason, { requiredLetter: escape || stuckMode ? null : game.requiredLetter, minLength }) : null
@@ -154,7 +170,7 @@ export function PlayScreen({ holdClock = false }: { holdClock?: boolean }) {
           <AimLayer
             board={game.board}
             from={player.square}
-            draftLength={draft.trim().length}
+            draftLength={draftLen}
             showReach={showReach}
             draftValid={draftValid}
             requiredLetter={game.requiredLetter}
@@ -166,24 +182,7 @@ export function PlayScreen({ holdClock = false }: { holdClock?: boolean }) {
             onStart={() => gameStore.getState().beginTurn()}
             firstTurn={chainLog.length === 0}
             requiredLetter={game.requiredLetter}
-            // The last-move story for the incoming player, from the transient event
-            // log (absent after a reload — the recap simply doesn't render then).
-            recap={(() => {
-              const entry = chainLog[chainLog.length - 1]
-              if (!entry || lastEvents.some((e) => e.type === 'STUCK')) return null
-              const mover = game.players.find((p) => p.id === entry.playerId)
-              if (!mover) return null
-              const base = { word: entry.word, playerName: mover.name, playerColor: mover.color }
-              const ladder = lastEvents.find((e) => e.type === 'LADDER')
-              if (ladder && ladder.type === 'LADDER') return { ...base, from: ladder.foot, to: ladder.top, feature: 'ladder' as const }
-              const fail = lastEvents.find((e) => e.type === 'ESCAPE_FAIL')
-              if (fail && fail.type === 'ESCAPE_FAIL') return { ...base, from: fail.head, to: fail.tail, feature: 'snake-slid' as const }
-              const rescued = lastEvents.find((e) => e.type === 'ESCAPE_SUCCESS')
-              if (rescued && rescued.type === 'ESCAPE_SUCCESS') return { ...base, from: rescued.head, to: rescued.head, feature: 'snake-escaped' as const }
-              const move = lastEvents.find((e) => e.type === 'MOVE')
-              if (move && move.type === 'MOVE') return { ...base, from: move.from, to: move.to }
-              return null
-            })()}
+            recap={lastMoveRecap(chainLog, lastEvents, game.players)}
             takeBack={undoState ? {
               word: undoState.word,
               free: undosUsed === 0,
@@ -236,7 +235,7 @@ export function PlayScreen({ holdClock = false }: { holdClock?: boolean }) {
                 </button>
                 {undoState && (
                   <button onClick={() => gameStore.getState().undo()} style={secondaryBtn}>
-                    ↩ Take back {undoState.word} {undosUsed === 0 ? '(free)' : `(−${UNDO_PENALTY} squares)`}
+                    ↩ Take back {undoState.word} {takeBackCost(undosUsed === 0)}
                   </button>
                 )}
               </>

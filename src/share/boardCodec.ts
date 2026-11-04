@@ -1,14 +1,16 @@
+import type { BoardLength } from '../engine/types'
+
 // Share-a-board codec: a board is fully determined by (seed, length) via the
 // seeded generator, so sharing is a pure client-side URL parameter — no backend.
 // The explicit `v1` version tag exists so a future generateBoard change can mint
 // `v2` links instead of silently reinterpreting old ones onto different boards.
 
-export type SharedBoard = { seed: string; length: 30 | 50 | 100 }
+export type SharedBoard = { seed: string; length: BoardLength }
 
 const LENGTHS = new Set([30, 50, 100])
 const SEED = /^[a-z0-9]{1,32}$/
 
-export function encodeBoard(seed: string, length: 30 | 50 | 100): string {
+export function encodeBoard(seed: string, length: BoardLength): string {
   return `v1.${seed}.${length}`
 }
 
@@ -22,5 +24,5 @@ export function decodeBoard(param: string | null): SharedBoard | null {
   if (!SEED.test(seed)) return null
   const length = Number(lengthRaw)
   if (!LENGTHS.has(length)) return null
-  return { seed, length: length as 30 | 50 | 100 }
+  return { seed, length: length as BoardLength }
 }

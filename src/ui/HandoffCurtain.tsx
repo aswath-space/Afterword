@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import type { PlayerState } from '../engine/types'
 import { useModalFocus } from './useModalFocus'
-import { UNDO_PENALTY } from '../store/gameStore'
+import { takeBackCost, type ChainEntry } from '../store/gameStore'
 
 // Whole-surface tap arms shortly after mount so the previous player's final tap
 // (the one that ended their turn) can't bleed through and instantly start the
@@ -16,7 +16,7 @@ export type HandoffRecap = {
   playerColor: string
   from: number
   to: number
-  feature?: 'ladder' | 'snake-slid' | 'snake-escaped'
+  feature?: ChainEntry['feature']
 }
 
 /** The played word, mirroring the ChainStrip treatment: serif 600 over a 3px underline in the mover's colour. */
@@ -185,7 +185,7 @@ export function HandoffCurtain({ player, onStart, takeBack, firstTurn, recap, re
               }}
             >
               ↩ {takeBack.playerName ? `${takeBack.playerName} — take back ${takeBack.word}` : `Take back ${takeBack.word}`}{' '}
-              {takeBack.free ? '(free)' : `(−${UNDO_PENALTY} squares)`}
+              {takeBackCost(takeBack.free)}
             </button>
           </div>
         )}

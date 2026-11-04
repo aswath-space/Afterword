@@ -1,15 +1,16 @@
 import { createStore, type StoreApi } from 'zustand/vanilla'
 import { persist, createJSONStorage, type StateStorage } from 'zustand/middleware'
 import type { Engine } from '../engine/engine'
-import { normalize } from '../engine/helpers'
+import { findEvent, normalize } from '../engine/helpers'
 import { readingIndexOf } from '../ui/boardLayout'
-import type { GameConfig, GameEvent, GameState, RejectReason } from '../engine/types'
+import type { BoardLength, GameConfig, GameEvent, GameState, RejectReason, TurnTimer } from '../engine/types'
 
 export const RESCUE_MS = 20_000
 // Take-back cost after the one free undo: the mover restarts 3 squares behind
 // where they stood. Positional only — never touches the chain/required letter,
 // and never triggers snakes/ladders (those fire only on word landings).
 export const UNDO_PENALTY = 3
+export const takeBackCost = (free: boolean) => (free ? '(free)' : `(−${UNDO_PENALTY} squares)`)
 
 // `feature`/`to` record what the board did to the word AFTER the raw move:
 // a ladder climb, or a snake outcome (escaped = clung to the head, slid = fell
@@ -74,49 +75,46 @@ export type GameStoreState = {
 
 export type GameStoreDeps = { engine: Engine; now?: () => number; storage?: StateStorage }
 
+// The per-game slice reset by starting a new game or returning to setup.
+const NO_GAME = {
+  game: null, chainLog: [], stamps: {}, handoff: false, deadlineTs: null, feedback: null,
+  lastEvents: [], moveSeq: 0, undoState: null, undosUsed: 0,
+} satisfies Partial<GameStoreState>
+
 // Which UI transition + clock the engine's events imply after a committed action.
+// The deadline is always cleared: a turn clock arms at beginTurn, and an escape
+// deadline is DEFERRED until the token has slithered/hopped to the snake head (the UI
+// calls armEscapeDeadline on arrival) so travel time can't eat into the rescue window.
+// A WIN also stays on the play screen so the winning move's token travel can play out;
+// PlayScreen calls showWinScreen() once the presentation settles (and on resume,
+// since game.phase === 'won' is persisted, the same effect flips immediately).
 function transition(events: GameEvent[]) {
-  // WIN stays on the play screen so the winning move's token travel can play out;
-  // PlayScreen calls showWinScreen() once the presentation settles (and on resume,
-  // since game.phase === 'won' is persisted, the same effect flips immediately).
-  if (events.some((e) => e.type === 'WIN')) return { screen: 'play' as const, handoff: false, deadlineTs: null }
-  // Escape deadline is DEFERRED (null): the token still has to slither/hop to the snake
-  // head, so the UI arms the clock (armEscapeDeadline) only once it arrives — otherwise
-  // the travel time would unfairly eat into the rescue window.
-  if (events.some((e) => e.type === 'ESCAPE_START')) return { screen: 'play' as const, handoff: false, deadlineTs: null }
-  return { screen: 'play' as const, handoff: true, deadlineTs: null } // TURN (normal / ladder / escape resolved)
+  const turnPassed = events.some((e) => e.type === 'TURN') // normal / ladder / stuck / escape resolved
+  return { screen: 'play' as const, handoff: turnPassed, deadlineTs: null }
 }
 
 export function createGameStore(deps: GameStoreDeps): StoreApi<GameStoreState> {
   const { engine } = deps
   const now = deps.now ?? (() => Date.now())
+  const turnDeadline = (timer: TurnTimer) => (timer === 'off' ? null : now() + timer * 1000)
 
   return createStore<GameStoreState>()(
     persist(
       (set, get) => ({
         screen: 'setup',
-        game: null,
-        chainLog: [],
-        stamps: {},
-        handoff: false,
-        deadlineTs: null,
-        feedback: null,
-        lastEvents: [],
-        moveSeq: 0,
+        ...NO_GAME,
         dictReady: false,
-        undoState: null,
-        undosUsed: 0,
 
         configureAndStart: (config) => {
           const game = engine.createGame(config)
-          set({ game, chainLog: [], stamps: {}, screen: 'play', handoff: true, deadlineTs: null, feedback: null, lastEvents: [], moveSeq: 0, undoState: null, undosUsed: 0 })
+          set({ ...NO_GAME, game, screen: 'play', handoff: true })
         },
 
         beginTurn: () => {
           const { game } = get()
           if (!game) return
           // Starting the next turn locks the previous word in — the take-back window closes.
-          set({ handoff: false, deadlineTs: game.timer === 'off' ? null : now() + game.timer * 1000, undoState: null })
+          set({ handoff: false, deadlineTs: turnDeadline(game.timer), undoState: null })
         },
 
         // Start the rescue countdown once the token has reached the snake head (called
@@ -132,38 +130,29 @@ export function createGameStore(deps: GameStoreDeps): StoreApi<GameStoreState> {
           if (!game) return false
           const res = engine.submitWord(game, raw)
           if (!res.ok) { set({ feedback: { kind: 'reject', reason: res.reason } }); return false }
-          const move = res.events.find((e) => e.type === 'MOVE')
+          const move = findEvent(res.events, 'MOVE')
           const player = game.players[game.currentPlayerIndex]
           const word = normalize(raw)
-          const entry: ChainEntry = {
-            word,
-            playerId: player.id,
-            squares: move && move.type === 'MOVE' ? move.squares : 0,
-            kind: 'move',
-          }
+          const entry: ChainEntry = { word, playerId: player.id, squares: move?.squares ?? 0, kind: 'move' }
           // Record what the board did to the landing, so the chain doesn't lie:
           // a ladder climb resolves immediately (feature + final square); a snake
           // landing only notes the head as `to` — the escape hasn't resolved yet,
           // resolveEscape() patches the outcome onto this entry retroactively.
-          const ladder = res.events.find((e) => e.type === 'LADDER')
-          if (ladder && ladder.type === 'LADDER') { entry.feature = 'ladder'; entry.to = ladder.top }
-          const escapeStart = res.events.find((e) => e.type === 'ESCAPE_START')
-          if (escapeStart && escapeStart.type === 'ESCAPE_START') entry.to = escapeStart.head
+          const ladder = findEvent(res.events, 'LADDER')
+          if (ladder) { entry.feature = 'ladder'; entry.to = ladder.top }
+          const escapeStart = findEvent(res.events, 'ESCAPE_START')
+          if (escapeStart) entry.to = escapeStart.head
           // Imprint the word's letters onto the squares it walked (first-stamp-sticks).
           // Purely a visual record derived from the MOVE event — never read back by the
           // engine, so it cannot affect turn/position logic or multiplayer correctness.
           // Letters are assigned in SCREEN reading order (top→bottom, left→right), not
           // path order, so the word reads forwards even on the board's right-to-left
           // (boustrophedon) rows instead of coming out mirrored.
-          let nextStamps = stamps
-          if (move && move.type === 'MOVE') {
-            nextStamps = { ...stamps }
-            const crossed: number[] = []
-            for (let sq = move.from + 1; sq <= move.to; sq++) crossed.push(sq)
-            const byReading = [...crossed].sort(
-              (a, b) => readingIndexOf(a, game.board.length) - readingIndexOf(b, game.board.length),
-            )
-            byReading.forEach((sq, j) => {
+          const nextStamps = { ...stamps }
+          if (move) {
+            const crossed = Array.from({ length: move.to - move.from }, (_, i) => move.from + 1 + i)
+            crossed.sort((a, b) => readingIndexOf(a, game.board.length) - readingIndexOf(b, game.board.length))
+            crossed.forEach((sq, j) => {
               if (j < word.length && nextStamps[sq] === undefined) {
                 nextStamps[sq] = { letter: word[j], playerId: player.id }
               }
@@ -174,7 +163,7 @@ export function createGameStore(deps: GameStoreDeps): StoreApi<GameStoreState> {
             lastEvents: res.events, moveSeq: get().moveSeq + 1,
             // Open the take-back window with the exact pre-move state — except on a win,
             // which ends the game on the spot (no un-winning).
-            undoState: res.events.some((e) => e.type === 'WIN')
+            undoState: findEvent(res.events, 'WIN')
               ? null
               : { snapshot: { game, chainLog, stamps }, playerId: player.id, word },
             ...transition(res.events),
@@ -212,11 +201,12 @@ export function createGameStore(deps: GameStoreDeps): StoreApi<GameStoreState> {
           const res = engine.useStuck(game, raw)
           if (!res.ok) { set({ feedback: { kind: 'reject', reason: res.reason } }); return false }
           const player = game.players[game.currentPlayerIndex]
-          const entry: ChainEntry = { word: normalize(raw), playerId: player.id, squares: 0, kind: 'stuck' }
+          const word = normalize(raw)
+          const entry: ChainEntry = { word, playerId: player.id, squares: 0, kind: 'stuck' }
           set({
             game: res.next, chainLog: [...chainLog, entry], feedback: null,
             lastEvents: res.events, moveSeq: get().moveSeq + 1,
-            undoState: { snapshot: { game, chainLog, stamps: get().stamps }, playerId: player.id, word: normalize(raw) },
+            undoState: { snapshot: { game, chainLog, stamps: get().stamps }, playerId: player.id, word },
             ...transition(res.events),
           })
           return true
@@ -240,9 +230,8 @@ export function createGameStore(deps: GameStoreDeps): StoreApi<GameStoreState> {
           if (!undoState || !game) return
           const { snapshot, playerId } = undoState
           const penalty = undosUsed >= 1 ? UNDO_PENALTY : 0
-          const players = penalty > 0
-            ? snapshot.game.players.map((p) => (p.id === playerId ? { ...p, square: Math.max(0, p.square - penalty) } : p))
-            : snapshot.game.players
+          const players = snapshot.game.players.map((p) =>
+            p.id === playerId ? { ...p, square: Math.max(0, p.square - penalty) } : p)
           set({
             game: { ...snapshot.game, players },
             chainLog: snapshot.chainLog,
@@ -250,7 +239,7 @@ export function createGameStore(deps: GameStoreDeps): StoreApi<GameStoreState> {
             undoState: null,
             undosUsed: undosUsed + 1,
             handoff: false,
-            deadlineTs: snapshot.game.timer === 'off' ? null : now() + snapshot.game.timer * 1000,
+            deadlineTs: turnDeadline(snapshot.game.timer),
             feedback: null,
             lastEvents: [],
           })
@@ -290,21 +279,20 @@ export function createGameStore(deps: GameStoreDeps): StoreApi<GameStoreState> {
           if (!game) return
           get().configureAndStart({
             players: game.players.map((p) => ({ id: p.id, name: p.name, color: p.color, emblem: p.emblem })),
-            boardLength: game.board.length as 30 | 50 | 100,
+            boardLength: game.board.length as BoardLength,
             timer: game.timer,
             seed: game.board.seed,
           })
         },
 
-        newGame: () => set({ screen: 'setup', game: null, chainLog: [], stamps: {}, handoff: false, deadlineTs: null, feedback: null, lastEvents: [], moveSeq: 0, undoState: null, undosUsed: 0 }),
+        newGame: () => set({ ...NO_GAME, screen: 'setup' }),
       }),
       {
         name: 'afterword-game',
         version: 1,
         // A stored blob from a different schema version resets to a clean setup
         // screen rather than applying mismatched state (spec §5.2, never throws).
-        migrate: () =>
-          ({ screen: 'setup', game: null, chainLog: [], stamps: {}, handoff: false, deadlineTs: null }) as unknown as GameStoreState,
+        migrate: () => ({ ...NO_GAME, screen: 'setup' }) as unknown as GameStoreState,
         storage: createJSONStorage(() => deps.storage ?? localStorage),
         // Persist only committed state; drop ephemeral feedback. Cast works around
         // zustand's default PersistedState = full state (we deliberately store a subset;

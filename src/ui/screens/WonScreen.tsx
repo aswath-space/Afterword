@@ -1,5 +1,5 @@
 import { Fragment, useRef, useState } from 'react'
-import type { GameState } from '../../engine/types'
+import type { BoardLength, GameState } from '../../engine/types'
 import { EmblemChip } from '../EmblemChip'
 import { Confetti } from '../Confetti'
 import { ChainStrip } from '../ChainStrip'
@@ -16,7 +16,7 @@ export function WonScreen({ game, onPlayAgain, onNewGame }: { game: GameState; o
   const [shareOpen, setShareOpen] = useState(false)
   const [copied, setCopied] = useState(false)
   const linkRef = useRef<HTMLInputElement>(null)
-  const shareLink = `${window.location.origin}${import.meta.env.BASE_URL}?b=${encodeBoard(game.board.seed, game.board.length as 30 | 50 | 100)}`
+  const shareLink = `${window.location.origin}${import.meta.env.BASE_URL}?b=${encodeBoard(game.board.seed, game.board.length as BoardLength)}`
   const copyLink = async () => {
     try {
       await navigator.clipboard.writeText(shareLink)

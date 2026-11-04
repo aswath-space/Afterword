@@ -39,15 +39,18 @@ export const displayStore = createStore<DisplayState>()(
 function applyAttrs(s: Pick<DisplayState, 'contrast' | 'palette' | 'text'>): void {
   if (typeof document === 'undefined') return
   const el = document.documentElement
-  if (s.contrast === 'high') el.setAttribute('data-contrast', 'high')
-  else el.removeAttribute('data-contrast')
-  if (s.palette === 'cvd') el.setAttribute('data-palette', 'cvd')
-  else el.removeAttribute('data-palette')
-  if (s.text === 'large') el.setAttribute('data-text', 'large')
-  else el.removeAttribute('data-text')
+  const on: Array<[string, string | null]> = [
+    ['data-contrast', s.contrast === 'high' ? 'high' : null],
+    ['data-palette', s.palette === 'cvd' ? 'cvd' : null],
+    ['data-text', s.text === 'large' ? 'large' : null],
+  ]
+  for (const [attr, value] of on) {
+    if (value) el.setAttribute(attr, value)
+    else el.removeAttribute(attr)
+  }
 }
 applyAttrs(displayStore.getState())
-displayStore.subscribe((s) => applyAttrs(s))
+displayStore.subscribe(applyAttrs)
 
 export function useDisplayStore<T>(selector: (s: DisplayState) => T): T {
   return useStore(displayStore, selector)

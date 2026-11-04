@@ -4,13 +4,8 @@ import { boardLayout } from './boardLayout'
 import { serpentGeometry } from './boardGeometry'
 import type { Beat } from './timeline'
 import { HOP_STAGGER_MS, prefersReducedMotion } from './motion/presets'
+import { EMBLEM_CLIP } from './emblems'
 
-const CLIP: Record<string, string> = {
-  circle: 'circle(50%)',
-  diamond: 'polygon(50% 0, 100% 50%, 50% 100%, 0 50%)',
-  triangle: 'polygon(50% 5%, 95% 95%, 5% 95%)',
-  hex: 'polygon(25% 5%, 75% 5%, 100% 50%, 75% 95%, 25% 95%, 0 50%)',
-}
 const BASE = 'translate(-50%, -50%)' // token is centered on its square
 
 // F8 fix: when 2+ tokens REST on the same square they fan out around its centre on a
@@ -40,14 +35,12 @@ export function AnimatedTokenLayer({ players, length, beat, onBeatDone, onHopLan
 }) {
   const refs = useRef<Record<string, HTMLDivElement | null>>({})
   const layout = boardLayout(length)
-  const posXY = (square: number) => {
-    // Square 0 ("start") rests ON square 1: the old off-board rest point (one cell
-    // left of square 1) is clipped past the viewport edge on phone widths — all four
-    // UX lenses measured tokens at x≈-37px, i.e. a first turn with NO visible piece.
-    // Waiting tokens fan out inside square 1 with the sitting player instead.
-    const base = layout.centerOf(Math.max(square, 1))
-    return { x: (base.x / layout.width) * 100, y: (base.y / layout.height) * 100 }
-  }
+  const pct = (p: { x: number; y: number }) => ({ x: (p.x / layout.width) * 100, y: (p.y / layout.height) * 100 })
+  // Square 0 ("start") rests ON square 1: the old off-board rest point (one cell
+  // left of square 1) is clipped past the viewport edge on phone widths — all four
+  // UX lenses measured tokens at x≈-37px, i.e. a first turn with NO visible piece.
+  // Waiting tokens fan out inside square 1 with the sitting player instead.
+  const posXY = (square: number) => pct(layout.centerOf(Math.max(square, 1)))
   // Exact square centre — used by every beat keyframe (moving tokens never fan out).
   const pos = (square: number) => {
     const c = posXY(square)
@@ -63,7 +56,7 @@ export function AnimatedTokenLayer({ players, length, beat, onBeatDone, onHopLan
     const c = posXY(p.square)
     return { left: `${c.x + dx}%`, top: `${c.y + dy}%` }
   }
-  const ptPos = (p: { x: number; y: number }) => ({ left: `${(p.x / layout.width) * 100}%`, top: `${(p.y / layout.height) * 100}%` })
+  const ptPos = (p: { x: number; y: number }) => { const c = pct(p); return { left: `${c.x}%`, top: `${c.y}%` } }
   const reduced = prefersReducedMotion()
 
   useLayoutEffect(() => {
@@ -105,7 +98,7 @@ export function AnimatedTokenLayer({ players, length, beat, onBeatDone, onHopLan
         const stepN = Math.max(1, Math.floor(sp.length / 24))
         const pts = sp.filter((_, i) => i % stepN === 0 || i === sp.length - 1)
         settle(ptPos(pts[0]))
-        await play(pts.map((p) => ({ ...ptPos(p) })), 950, 'cubic-bezier(0.5,0,0.75,0)')
+        await play(pts.map(ptPos), 950, 'cubic-bezier(0.5,0,0.75,0)')
         if (!cancelled) settle(ptPos(pts[pts.length - 1]))
       } else if (beat.kind === 'settle') {
         await play([
@@ -155,7 +148,7 @@ export function AnimatedTokenLayer({ players, length, beat, onBeatDone, onHopLan
               // effect snaps the mover to its beat-start square — so the mover is
               // always transition-free while animating.
               transition: animating || reduced ? undefined : 'left 150ms ease, top 150ms ease',
-              width: '7%', aspectRatio: '1', background: p.color, clipPath: CLIP[p.emblem] ?? CLIP.circle,
+              width: '7%', aspectRatio: '1', background: p.color, clipPath: EMBLEM_CLIP[p.emblem] ?? EMBLEM_CLIP.circle,
               boxShadow: '0 2px 5px rgba(0,0,0,0.35)', border: '1.5px solid rgba(255,255,255,0.6)',
             }}
           />

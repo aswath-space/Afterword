@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Header } from '../Header'
 import { EmblemChip } from '../EmblemChip'
-import type { GameConfig, TurnTimer } from '../../engine/types'
+import type { BoardLength, GameConfig, TurnTimer } from '../../engine/types'
 import type { SharedBoard } from '../../share/boardCodec'
 
 const IDENTITY = [
@@ -11,7 +11,7 @@ const IDENTITY = [
   { color: 'var(--p4)', emblem: 'hex' },
 ] as const
 
-const LENGTHS: Array<{ v: 30 | 50 | 100; label: string }> = [
+const LENGTHS: Array<{ v: BoardLength; label: string }> = [
   { v: 30, label: 'Quick' }, { v: 50, label: 'Standard' }, { v: 100, label: 'Marathon' },
 ]
 const TIMERS: Array<{ v: TurnTimer; label: string }> = [
@@ -51,7 +51,7 @@ export function SetupScreen({ onStart, sharedBoard = null, onClearShared }: {
   onClearShared?: () => void
 }) {
   const [names, setNames] = useState<string[]>(['Player 1', 'Player 2'])
-  const [boardLength, setBoardLength] = useState<30 | 50 | 100>(50)
+  const [boardLength, setBoardLength] = useState<BoardLength>(50)
   const [timer, setTimer] = useState<TurnTimer>('off')
   const effectiveLength = sharedBoard?.length ?? boardLength
 

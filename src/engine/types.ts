@@ -4,9 +4,10 @@ export interface Snake { head: number; tail: number }   // head > tail
 export interface Ladder { foot: number; top: number }   // top > foot
 export interface Board { length: number; snakes: Snake[]; ladders: Ladder[]; seed: string }
 export type TurnTimer = 'off' | 30 | 60
+export type BoardLength = 30 | 50 | 100
 export interface GameConfig {
   players: Array<{ id: PlayerId; name: string; color: string; emblem: string }>
-  boardLength: 30 | 50 | 100
+  boardLength: BoardLength
   timer: TurnTimer
   seed: string
 }

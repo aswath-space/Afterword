@@ -34,11 +34,9 @@ export default function App() {
     if (resumePending && screen !== 'play') setResumePending(false)
   }, [resumePending, screen])
 
-  const resumeSummary = (() => {
-    if (!game) return ''
-    const cur = game.players[game.currentPlayerIndex]
-    return `${game.players.length} players · square ${cur.square}`
-  })()
+  const resumeSummary = game
+    ? `${game.players.length} players · square ${game.players[game.currentPlayerIndex].square}`
+    : ''
 
   return (
     <main style={{ maxWidth: 720, margin: '0 auto', padding: 'clamp(16px,4vw,36px)', paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>

@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
-import { WordInput, rejectMessage } from './WordInput'
+import { WordInput } from './WordInput'
+import { rejectMessage } from './rejectMessage'
 
 describe('rejectMessage', () => {
   it('maps reasons to player-facing copy', () => {
